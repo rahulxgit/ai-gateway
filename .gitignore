@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+data/
+logs/
+*.log
+.env
+.env.local
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+frontend/node_modules/
+frontend/dist/

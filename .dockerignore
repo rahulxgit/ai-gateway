@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+data
+logs
+*.log
+.env
+.env.*
+!.env.example
+.git
+.github
+frontend/node_modules
+frontend/dist
+*.db
+*.db-*
