@@ -4,11 +4,16 @@ import path from 'path';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
-const dbPath = env.databaseUrl.startsWith('.') || env.databaseUrl.startsWith('/')
-  ? env.databaseUrl
-  : path.join(process.cwd(), env.databaseUrl);
+const dbPath =
+  env.databaseUrl === ':memory:'
+    ? ':memory:'
+    : env.databaseUrl.startsWith('.') || env.databaseUrl.startsWith('/')
+      ? env.databaseUrl
+      : path.join(process.cwd(), env.databaseUrl);
 
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+if (dbPath !== ':memory:') {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+}
 
 export const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
