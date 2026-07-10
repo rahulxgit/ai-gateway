@@ -90,6 +90,7 @@ reports the rest as unavailable via `/health` and `/providers`.
 | GET/PATCH | `/projects/:id` | Read / update project memory |
 | PUT/GET/DELETE | `/projects/:id/files` | Workspace file management, versioned |
 | POST/GET | `/projects/:id/snapshots` | Create/list/restore full project snapshots |
+| POST | `/uploads` | Upload a PDF/DOCX/text file; extracts text (optionally saves into a project's workspace via `projectId` field) |
 
 ### Example: basic chat request
 
@@ -154,6 +155,13 @@ npm run build   # production build to frontend/dist
   This is the actual feature, made visible instead of hidden.
 - **Analytics panel** — total requests, success rate, failover count, cost,
   and per-provider breakdown.
+- **Project switcher** — create a persistent project, attach it to a chat,
+  and the orchestrator automatically injects that project's goal, files,
+  and decisions as context on every message.
+- **File uploads** — attach a PDF, DOCX, or text file from the composer.
+  The backend extracts the text and folds it into your next message; if a
+  project is active, the file is also saved into that project's workspace
+  so later requests can reference it automatically.
 
 ## Testing
 

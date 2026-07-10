@@ -5,8 +5,9 @@ import { Composer } from './components/Composer';
 import { RoutingControls } from './components/RoutingControls';
 import { HealthBar } from './components/HealthBar';
 import { AnalyticsPanel } from './components/AnalyticsPanel';
+import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { api } from './lib/api';
-import type { ChatMessage, ChatSession, ProviderName, TaskType } from './types';
+import type { ChatMessage, ChatSession, ProjectMemory, ProviderName, TaskType } from './types';
 
 export default function App() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -14,6 +15,7 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [taskType, setTaskType] = useState<TaskType>('general');
   const [forceProvider, setForceProvider] = useState<ProviderName | 'auto'>('auto');
+  const [activeProject, setActiveProject] = useState<ProjectMemory | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
@@ -67,6 +69,7 @@ export default function App() {
     try {
       const result = await api.sendChat({
         sessionId: activeSessionId ?? undefined,
+        projectId: activeProject?.projectId,
         messages: [{ role: 'user', content: text }],
         taskType,
         forceProvider: forceProvider === 'auto' ? undefined : forceProvider,
@@ -105,11 +108,13 @@ export default function App() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-hairline bg-panel px-5 py-3">
-          <div className="flex items-center gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-y-2 border-b border-hairline bg-panel px-5 py-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="font-mono text-sm font-semibold tracking-tight text-ink">
               AI GATEWAY
             </span>
+            <span className="text-ink-faint">/</span>
+            <ProjectSwitcher activeProject={activeProject} onSelect={setActiveProject} />
             <span className="text-ink-faint">/</span>
             <RoutingControls
               taskType={taskType}
@@ -129,6 +134,14 @@ export default function App() {
           </div>
         </header>
 
+        {activeProject && (
+          <div className="flex items-center gap-2 border-b border-hairline bg-panel/60 px-5 py-1.5 font-mono text-[11px] text-ink-faint">
+            <span className="text-ok">●</span>
+            working in project <span className="text-ink-muted">{activeProject.name}</span>
+            {activeProject.goal && <span>· {activeProject.goal}</span>}
+          </div>
+        )}
+
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-5 py-6">
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
             {messages.length === 0 && (
@@ -140,8 +153,8 @@ export default function App() {
                   One assistant, seven providers behind it.
                 </h1>
                 <p className="mt-2 max-w-sm text-sm text-ink-muted">
-                  Ask anything. If a provider is rate-limited or down, the gateway switches
-                  automatically — you'll never see it happen.
+                  Ask anything, or attach a PDF/DOCX to work on. If a provider is rate-limited
+                  or down, the gateway switches automatically — you'll never see it happen.
                 </p>
               </div>
             )}
@@ -167,7 +180,7 @@ export default function App() {
 
         <div className="border-t border-hairline bg-canvas px-5 py-4">
           <div className="mx-auto max-w-3xl">
-            <Composer onSend={send} disabled={sending} />
+            <Composer onSend={send} disabled={sending} projectId={activeProject?.projectId} />
           </div>
         </div>
       </div>

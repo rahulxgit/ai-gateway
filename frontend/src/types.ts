@@ -89,3 +89,26 @@ export const TASK_TYPES: { value: TaskType; label: string }[] = [
   { value: 'cheap', label: 'Cheap' },
   { value: 'large-context', label: 'Large context' },
 ];
+
+export interface ProjectMemory {
+  projectId: string;
+  name: string;
+  goal: string;
+  currentTask: string | null;
+  completedTasks: string[];
+  pendingTasks: string[];
+  fileTree: string[];
+  architectureDecisions: { id: string; summary: string; createdAt: string }[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UploadResult {
+  filename: string;
+  mimeType: string;
+  kind: 'text' | 'image' | 'unsupported';
+  sizeBytes: number;
+  extractedText: string | null;
+  truncated: boolean;
+  savedToProject: boolean;
+}

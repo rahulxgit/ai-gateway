@@ -1,5 +1,23 @@
 import request from 'supertest';
+import path from 'path';
 import { runMigrations } from '../database/client';
+
+// See upload.test.ts for why this is mocked rather than exercised for real
+// here — pdfjs-dist is ESM-only and Jest can't execute it, though it's
+// been verified working end-to-end under real Node via manual curl tests.
+jest.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
+  getDocument: () => ({
+    promise: Promise.resolve({
+      numPages: 1,
+      getPage: async () => ({
+        getTextContent: async () => ({
+          items: [{ str: 'This is a test project spec.' }],
+        }),
+      }),
+    }),
+  }),
+}));
+
 import { createApp } from '../app';
 
 beforeAll(() => {
@@ -79,5 +97,36 @@ describe('404 handler', () => {
     const res = await request(app).get('/definitely-not-a-route');
     expect(res.status).toBe(404);
     expect(res.body.error).toContain('Not found');
+  });
+});
+
+describe('POST /uploads', () => {
+  const fixturePath = path.join(__dirname, 'fixtures', 'sample.pdf');
+
+  it('extracts text from an uploaded PDF', async () => {
+    const res = await request(app).post('/uploads').attach('file', fixturePath);
+    expect(res.status).toBe(200);
+    expect(res.body.kind).toBe('text');
+    expect(res.body.extractedText).toContain('test project spec');
+  });
+
+  it('rejects requests with no file attached', async () => {
+    const res = await request(app).post('/uploads');
+    expect(res.status).toBe(400);
+  });
+
+  it('saves the extracted text into a project workspace when projectId is given', async () => {
+    const createRes = await request(app).post('/projects').send({ name: 'Upload Test Project' });
+    const projectId = createRes.body.projectId;
+
+    const uploadRes = await request(app)
+      .post('/uploads')
+      .field('projectId', projectId)
+      .attach('file', fixturePath);
+
+    expect(uploadRes.body.savedToProject).toBe(true);
+
+    const filesRes = await request(app).get(`/projects/${projectId}/files`);
+    expect(filesRes.body.some((f: { path: string }) => f.path === 'uploads/sample.pdf')).toBe(true);
   });
 });

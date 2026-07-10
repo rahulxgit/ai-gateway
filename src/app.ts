@@ -7,6 +7,7 @@ import chatRoutes from './routes/chat.routes';
 import sessionRoutes from './routes/session.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import projectRoutes from './routes/project.routes';
+import uploadRoutes from './routes/upload.routes';
 
 export function createApp() {
   const app = express();
@@ -23,6 +24,7 @@ export function createApp() {
   app.use(sessionRoutes);
   app.use(analyticsRoutes);
   app.use(projectRoutes);
+  app.use(uploadRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
