@@ -69,6 +69,27 @@ export function listSessions(): ChatSession[] {
   return rows.map(toSession);
 }
 
+function truncateTitle(text: string, maxLen = 48): string {
+  const singleLine = text.replace(/\s+/g, ' ').trim();
+  return singleLine.length > maxLen ? `${singleLine.slice(0, maxLen).trimEnd()}…` : singleLine;
+}
+
+/**
+ * Renames a session from "New Chat" to a snippet of its first user message,
+ * the first time a message is saved to it. Later messages never overwrite
+ * the title, so it stays a stable label for the conversation.
+ */
+export function autoTitleSessionIfNeeded(sessionId: string, firstUserMessage: string): void {
+  const row = db.prepare(`SELECT title FROM sessions WHERE id = ?`).get(sessionId) as
+    | { title: string }
+    | undefined;
+  if (!row || row.title !== 'New Chat') return;
+  db.prepare(`UPDATE sessions SET title = ? WHERE id = ?`).run(
+    truncateTitle(firstUserMessage),
+    sessionId
+  );
+}
+
 export function deleteSession(sessionId: string): void {
   db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
 }

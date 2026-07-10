@@ -1,6 +1,7 @@
 import { runMigrations } from '../database/client';
 import * as projectMemory from '../services/project-memory.service';
 import * as workspace from '../services/workspace.service';
+import { createSession, autoTitleSessionIfNeeded, listSessions } from '../services/conversation.service';
 
 beforeAll(() => {
   runMigrations();
@@ -79,5 +80,45 @@ describe('project memory + workspace persistence', () => {
     const relevant = workspace.detectRelevantFiles(project.projectId, 'fix bug in auth service', 5);
     expect(relevant.some((f) => f.path === 'src/auth-service.ts')).toBe(true);
     expect(relevant.length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('session auto-titling', () => {
+  it('renames a "New Chat" session from its first user message', () => {
+    const session = createSession();
+    expect(session.title).toBe('New Chat');
+
+    autoTitleSessionIfNeeded(session.id, 'Design a database schema for streaks');
+
+    const updated = listSessions().find((s) => s.id === session.id);
+    expect(updated?.title).toBe('Design a database schema for streaks');
+  });
+
+  it('truncates long messages with an ellipsis', () => {
+    const session = createSession();
+    const longMessage = 'a'.repeat(100);
+
+    autoTitleSessionIfNeeded(session.id, longMessage);
+
+    const updated = listSessions().find((s) => s.id === session.id);
+    expect(updated?.title.length).toBeLessThanOrEqual(49);
+    expect(updated?.title.endsWith('…')).toBe(true);
+  });
+
+  it('does not overwrite a title that has already been set', () => {
+    const session = createSession();
+    autoTitleSessionIfNeeded(session.id, 'first message');
+    autoTitleSessionIfNeeded(session.id, 'second message');
+
+    const updated = listSessions().find((s) => s.id === session.id);
+    expect(updated?.title).toBe('first message');
+  });
+
+  it('does not rename a session that already has a custom title', () => {
+    const session = createSession('My Custom Title');
+    autoTitleSessionIfNeeded(session.id, 'some message');
+
+    const updated = listSessions().find((s) => s.id === session.id);
+    expect(updated?.title).toBe('My Custom Title');
   });
 });

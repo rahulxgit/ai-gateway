@@ -21,6 +21,7 @@ import {
   historyAsChatMessages,
   saveMessage,
   estimateSessionTokenCount,
+  autoTitleSessionIfNeeded,
 } from './conversation.service';
 import { recordAnalytics } from './analytics.service';
 import { logger, failoverLogger } from '../utils/logger';
@@ -164,6 +165,8 @@ export async function orchestrateChat(request: OrchestratedRequest): Promise<Orc
   for (const m of request.messages.filter((m) => m.role !== 'system')) {
     saveMessage(session.id, m.role, m.content);
   }
+  const firstUserMsg = request.messages.find((m) => m.role === 'user');
+  if (firstUserMsg) autoTitleSessionIfNeeded(session.id, firstUserMsg.content);
 
   try {
     const { response, failoverChain } = await routeChat({ ...request, messages: fullMessages });
@@ -242,6 +245,8 @@ export async function orchestrateChatStream(
   for (const m of request.messages.filter((m) => m.role !== 'system')) {
     saveMessage(session.id, m.role, m.content);
   }
+  const firstUserMsg = request.messages.find((m) => m.role === 'user');
+  if (firstUserMsg) autoTitleSessionIfNeeded(session.id, firstUserMsg.content);
 
   const { response, failoverChain } = await routeChatStream(
     { ...request, messages: fullMessages },
