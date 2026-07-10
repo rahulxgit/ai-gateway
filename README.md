@@ -121,7 +121,42 @@ curl -X POST http://localhost:4000/chat \
       }'
 ```
 
+## Frontend (React dashboard)
+
+A chat UI lives in `frontend/` — dark, technical "control room" aesthetic
+built around the one thing this product actually does: route around failure.
+Every assistant reply shows its **routing chain** (which providers were
+tried, which one answered, in what time), a live provider health bar in the
+header, and a slide-over analytics panel.
+
+```bash
+cd frontend
+npm install
+cp .env.example .env   # points at http://localhost:4000 by default
+npm run dev
+```
+
+Opens on `http://localhost:5173`. Make sure the backend (`npm run dev` in
+the repo root) is running first — the frontend is just a client for it.
+
+```bash
+npm run build   # production build to frontend/dist
+```
+
+### What you'll see
+
+- **Sidebar** — chat sessions, persisted server-side, switch between them freely.
+- **Header controls** — pick a task type (routes to the best-suited provider
+  chain) or force a specific provider to test failover deliberately.
+- **Health bar** — live dot per provider (green = healthy, amber = degraded/
+  rate-limited, red = down), polled every 8s.
+- **Routing chain per message** — e.g. `gemini →(failed) groq · llama-3.3-70b-versatile · failover`.
+  This is the actual feature, made visible instead of hidden.
+- **Analytics panel** — total requests, success rate, failover count, cost,
+  and per-provider breakdown.
+
 ## Testing
+
 
 ```bash
 npm test              # full suite (35 tests)
