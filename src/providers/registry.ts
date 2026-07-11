@@ -8,6 +8,8 @@ import { OpenRouterAdapter } from './openrouter.adapter';
 import { HuggingFaceAdapter } from './huggingface.adapter';
 import { DeepSeekAdapter } from './deepseek.adapter';
 import { KimiAdapter } from './kimi.adapter';
+import { CerebrasAdapter } from './cerebras.adapter';
+import { MistralAdapter } from './mistral.adapter';
 
 // Single source of truth for every provider instance. To add a new
 // provider: write an adapter implementing ProviderAdapter, instantiate it
@@ -23,6 +25,8 @@ export const providerRegistry: Record<ProviderName, ProviderAdapter> = {
   huggingface: new HuggingFaceAdapter(),
   deepseek: new DeepSeekAdapter(),
   kimi: new KimiAdapter(),
+  cerebras: new CerebrasAdapter(),
+  mistral: new MistralAdapter(),
 };
 
 export function getProvider(name: ProviderName): ProviderAdapter {

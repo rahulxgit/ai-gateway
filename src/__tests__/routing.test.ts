@@ -10,7 +10,15 @@ describe('buildProviderOrder', () => {
 
   it('prioritizes task-preferred providers for coding tasks', () => {
     const order = buildProviderOrder('coding', undefined);
-    expect(order.slice(0, 6)).toEqual(['deepseek', 'anthropic', 'kimi', 'gemini', 'openai', 'openrouter']);
+    expect(order.slice(0, 7)).toEqual([
+      'deepseek',
+      'anthropic',
+      'mistral',
+      'kimi',
+      'gemini',
+      'openai',
+      'openrouter',
+    ]);
   });
 
   it('falls back to the default order for unrecognized/general task type', () => {

@@ -25,7 +25,7 @@ export const chatRequestSchema = z.object({
     .enum(['coding', 'reasoning', 'creative', 'fast', 'cheap', 'large-context', 'general'])
     .optional(),
   forceProvider: z
-    .enum(['gemini', 'anthropic', 'openai', 'groq', 'together', 'openrouter', 'huggingface', 'deepseek', 'kimi'])
+    .enum(['gemini', 'anthropic', 'openai', 'groq', 'together', 'openrouter', 'huggingface', 'deepseek', 'kimi', 'cerebras', 'mistral'])
     .optional(),
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),

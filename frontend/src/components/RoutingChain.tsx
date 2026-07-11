@@ -10,6 +10,8 @@ const LABELS: Record<ProviderName, string> = {
   huggingface: 'huggingface',
   deepseek: 'deepseek',
   kimi: 'kimi',
+  cerebras: 'cerebras',
+  mistral: 'mistral',
 };
 
 /**

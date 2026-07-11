@@ -7,7 +7,9 @@ export type ProviderName =
   | 'openrouter'
   | 'huggingface'
   | 'deepseek'
-  | 'kimi';
+  | 'kimi'
+  | 'cerebras'
+  | 'mistral';
 
 export type TaskType =
   | 'coding'
@@ -82,6 +84,8 @@ export const ALL_PROVIDERS: ProviderName[] = [
   'huggingface',
   'deepseek',
   'kimi',
+  'cerebras',
+  'mistral',
 ];
 
 export const TASK_TYPES: { value: TaskType; label: string }[] = [

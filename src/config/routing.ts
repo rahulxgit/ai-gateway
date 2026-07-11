@@ -7,7 +7,9 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'gemini',
   'anthropic',
   'deepseek',
+  'cerebras',
   'groq',
+  'mistral',
   'kimi',
   'together',
   'openrouter',
@@ -20,12 +22,16 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
 // already tried.
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
   // DeepSeek and Kimi both benchmark very strongly on SWE-bench-style coding
-  // tasks at a fraction of the cost of Anthropic/OpenAI, so they lead here.
-  coding: ['deepseek', 'anthropic', 'kimi', 'gemini', 'openai', 'openrouter'],
+  // tasks at a fraction of the cost of Anthropic/OpenAI; Mistral's Codestral
+  // is purpose-built for code too, so it joins the front of this chain.
+  coding: ['deepseek', 'anthropic', 'mistral', 'kimi', 'gemini', 'openai', 'openrouter'],
   reasoning: ['deepseek', 'anthropic', 'openai', 'gemini'],
   creative: ['gemini', 'openai', 'anthropic'],
-  fast: ['groq', 'together', 'gemini'],
-  cheap: ['deepseek', 'together', 'groq', 'openrouter', 'huggingface'],
+  // Cerebras runs on wafer-scale inference hardware and is dramatically
+  // faster than typical GPU-based providers — leads the fast lane alongside
+  // Groq, which is the other speed-optimized provider here.
+  fast: ['cerebras', 'groq', 'together', 'gemini'],
+  cheap: ['deepseek', 'cerebras', 'together', 'groq', 'openrouter', 'huggingface'],
   // Kimi's 256K context window is the largest in this gateway, so it leads
   // for tasks that need to hold a lot of material at once.
   'large-context': ['kimi', 'gemini', 'anthropic', 'openai'],
@@ -45,6 +51,8 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   huggingface: 0.0001,
   deepseek: 0.0002,
   kimi: 0.0018,
+  cerebras: 0.0001,
+  mistral: 0.0004,
 };
 
 export function buildProviderOrder(

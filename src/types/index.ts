@@ -12,7 +12,9 @@ export type ProviderName =
   | 'openrouter'
   | 'huggingface'
   | 'deepseek'
-  | 'kimi';
+  | 'kimi'
+  | 'cerebras'
+  | 'mistral';
 
 export type TaskType =
   | 'coding'

@@ -76,14 +76,16 @@ reports the rest as unavailable via `/health` and `/providers`.
 
 ### Providers
 
-Nine providers are supported, all behind the same `ProviderAdapter`
+Eleven providers are supported, all behind the same `ProviderAdapter`
 interface: Gemini, Anthropic, OpenAI, Groq, Together AI, OpenRouter,
-Hugging Face, DeepSeek, and Kimi (Moonshot AI). A few notes on cost, since
-"free" means different things across them:
+Hugging Face, DeepSeek, Kimi (Moonshot AI), Cerebras, and Mistral. A few
+notes on cost, since "free" means different things across them:
 
-- **Gemini, Groq, Together, Hugging Face, OpenRouter** — genuinely free
-  tiers exist (limits and reliability vary; Groq's free tier is currently
-  the most generous for general chat).
+- **Gemini, Groq, Together, Hugging Face, OpenRouter, Cerebras, Mistral** —
+  genuinely free tiers with no card required (limits and reliability vary;
+  Cerebras's 1M tokens/day resets daily and is currently the most generous
+  raw daily volume of any provider here; Mistral's ~1B tokens/month
+  "Experiment" tier includes Codestral for coding).
 - **DeepSeek** — 5 million free tokens on signup, no card required, then
   roughly $0.14 per million tokens after. One of the strongest
   price-to-coding-quality ratios available.
