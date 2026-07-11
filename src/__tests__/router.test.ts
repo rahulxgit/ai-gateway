@@ -13,8 +13,9 @@ jest.mock('../providers/registry', () => {
 
 import { listConfiguredProviders, getProvider } from '../providers/registry';
 import { routeChat, AllProvidersFailedError } from '../services/router.service';
+import { recordSuccess } from '../services/health.service';
 
-function mockAdapter(name: ProviderName, impl: () => Promise<any>) {
+function mockAdapter(name: ProviderName, impl: (options: any) => Promise<any>) {
   return {
     name,
     defaultModel: 'test-model',
@@ -93,5 +94,49 @@ describe('routeChat failover', () => {
     await expect(
       routeChat({ messages: [{ role: 'user', content: 'hello' }] })
     ).rejects.toThrow('No providers are configured');
+  });
+
+  it('only passes a model override to the provider it was intended for, not to fallback providers', async () => {
+    // Regression test: a model override like an OpenRouter-specific model
+    // string ("deepseek/deepseek-chat-v3.1:free") is meaningless to other
+    // providers. If it leaked into the failover chain, every fallback
+    // provider would receive an invalid model ID and fail immediately,
+    // cascading into a total outage instead of a clean failover.
+    const openrouter = mockAdapter('openrouter', async () => {
+      throw new ProviderError('openrouter', 'SERVER_ERROR', 'openrouter down');
+    });
+    const gemini = mockAdapter('gemini', async (options) => ({
+      provider: 'gemini',
+      model: options.model ?? 'gemini-default-model',
+      content: 'fallback response',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      latencyMs: 10,
+      estimatedCostUsd: 0.0001,
+    }));
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) =>
+      ({ openrouter, gemini }[name as 'openrouter' | 'gemini'] ??
+      mockAdapter(name, async () => { throw new Error('unexpected provider called'); }))
+    );
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['openrouter', 'gemini']);
+    // Health status is normally seeded from each adapter's real isConfigured()
+    // check, which would be false here since no real OPENROUTER_API_KEY is
+    // set in the test environment — that would push openrouter into the
+    // "degraded" bucket and break the ordering this test depends on. Force
+    // it healthy directly so the test verifies routing logic, not env setup.
+    recordSuccess('openrouter', 10);
+
+    const result = await routeChat({
+      messages: [{ role: 'user', content: 'hello' }],
+      forceProvider: 'openrouter',
+      model: 'deepseek/deepseek-chat-v3.1:free',
+    });
+
+    // Openrouter received the override...
+    expect(openrouter.chat).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'deepseek/deepseek-chat-v3.1:free' })
+    );
+    // ...but gemini, reached only via failover, must NOT receive it.
+    expect(gemini.chat).toHaveBeenCalledWith(expect.objectContaining({ model: undefined }));
+    expect(result.response.model).toBe('gemini-default-model');
   });
 });

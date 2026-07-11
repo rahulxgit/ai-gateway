@@ -56,13 +56,22 @@ export async function routeChat(request: ChatRequest): Promise<RouteResult> {
   for (const providerName of order) {
     attempted.push(providerName);
     const adapter = getProvider(providerName);
+    // A model override (e.g. an OpenRouter-specific model string like
+    // "deepseek/deepseek-chat-v3.1:free") is only meaningful for the
+    // provider it was intended for — passing it to a different provider
+    // during failover would be an invalid/nonsensical model ID for that
+    // provider's API and cause an immediate, avoidable failure. Only the
+    // explicitly forced provider gets the override; every other provider
+    // in the chain uses its own default model.
+    const modelForThisProvider =
+      request.forceProvider && providerName === request.forceProvider ? request.model : undefined;
 
     try {
       const response = await retryWithBackoff(
         () =>
           adapter.chat({
             messages: request.messages,
-            model: request.model,
+            model: modelForThisProvider,
             temperature: request.temperature,
             maxTokens: request.maxTokens,
           }),
@@ -119,12 +128,15 @@ export async function routeChatStream(
     attempted.push(providerName);
     const adapter = getProvider(providerName);
     let emittedAnyChunk = false;
+    // See routeChat for why this is scoped to only the forced provider.
+    const modelForThisProvider =
+      request.forceProvider && providerName === request.forceProvider ? request.model : undefined;
 
     try {
       const response = await adapter.chatStream(
         {
           messages: request.messages,
-          model: request.model,
+          model: modelForThisProvider,
           temperature: request.temperature,
           maxTokens: request.maxTokens,
         },
