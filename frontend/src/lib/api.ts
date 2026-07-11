@@ -2,6 +2,7 @@ import type {
   AnalyticsSummary,
   ChatResult,
   ChatSession,
+  ImageAttachment,
   ProjectMemory,
   ProviderHealth,
   ProviderName,
@@ -32,7 +33,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface SendChatInput {
   sessionId?: string;
   projectId?: string;
-  messages: { role: 'user' | 'system'; content: string }[];
+  messages: { role: 'user' | 'system'; content: string; images?: ImageAttachment[] }[];
   taskType?: TaskType;
   forceProvider?: ProviderName;
   model?: string;

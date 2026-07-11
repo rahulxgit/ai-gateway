@@ -17,7 +17,12 @@ function toGeminiContents(messages: ChatMessage[]) {
     .filter((m) => m.role !== 'system')
     .map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
+      parts: [
+        ...(m.images ?? []).map((img) => ({
+          inlineData: { mimeType: img.mimeType, data: img.base64 },
+        })),
+        { text: m.content },
+      ],
     }));
 }
 
@@ -33,6 +38,7 @@ export class GeminiAdapter implements ProviderAdapter {
   // the most generous free-tier limits of any Gemini model (15 RPM / 1,000
   // RPD as of mid-2026) — ideal as a default for a free/cheap-first gateway.
   readonly defaultModel = 'gemini-2.5-flash-lite';
+  readonly supportsVision = true;
 
   isConfigured(): boolean {
     return Boolean(env.geminiApiKey);

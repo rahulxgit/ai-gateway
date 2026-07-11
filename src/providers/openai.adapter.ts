@@ -11,6 +11,7 @@ export class OpenAIAdapter extends OpenAICompatibleAdapter {
       // tokens) — OpenAI has no free tier at all regardless of model choice,
       // so minimizing per-token cost is the only lever available here.
       defaultModel: 'gpt-5-nano',
+      supportsVision: true,
     });
   }
 }

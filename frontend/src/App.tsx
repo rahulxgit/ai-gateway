@@ -7,7 +7,7 @@ import { HealthBar } from './components/HealthBar';
 import { AnalyticsPanel } from './components/AnalyticsPanel';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { api } from './lib/api';
-import type { ChatMessage, ChatSession, ProjectMemory, ProviderName, TaskType } from './types';
+import type { ChatMessage, ChatSession, ImageAttachment, ProjectMemory, ProviderName, TaskType } from './types';
 
 export default function App() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -63,9 +63,9 @@ export default function App() {
     refreshSessions();
   };
 
-  const send = async (text: string) => {
+  const send = async (text: string, images?: ImageAttachment[]) => {
     setError(null);
-    const userMessage: ChatMessage = { role: 'user', content: text };
+    const userMessage: ChatMessage = { role: 'user', content: text, images };
     setMessages((prev) => [...prev, userMessage]);
     setSending(true);
 
@@ -73,7 +73,7 @@ export default function App() {
       const result = await api.sendChat({
         sessionId: activeSessionId ?? undefined,
         projectId: activeProject?.projectId,
-        messages: [{ role: 'user', content: text }],
+        messages: [{ role: 'user', content: text, images }],
         taskType,
         forceProvider: forceProvider === 'auto' ? undefined : forceProvider,
         model: modelOverride || undefined,

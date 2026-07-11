@@ -14,7 +14,10 @@ export function createApp() {
 
   app.use(helmet());
   app.use(cors({ origin: env.corsOrigin }));
-  app.use(express.json({ limit: '2mb' }));
+  // Base64-encoded images in chat requests can be large (a single 15MB
+  // image is ~20MB as base64); 2mb was fine for text-only payloads but
+  // would reject every image-bearing request.
+  app.use(express.json({ limit: '50mb' }));
   app.use(sanitizeInput);
   app.use(apiRateLimiter);
 

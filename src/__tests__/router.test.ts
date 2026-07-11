@@ -139,4 +139,60 @@ describe('routeChat failover', () => {
     expect(gemini.chat).toHaveBeenCalledWith(expect.objectContaining({ model: undefined }));
     expect(result.response.model).toBe('gemini-default-model');
   });
+
+  it('only routes image-bearing requests to providers that support vision', async () => {
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'groq', 'anthropic']);
+
+    const gemini = mockAdapter('gemini', async () => ({
+      provider: 'gemini',
+      model: 'gemini-2.5-flash-lite',
+      content: 'I see a cat in the image',
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      latencyMs: 20,
+      estimatedCostUsd: 0.0001,
+    }));
+    const groq = mockAdapter('groq', async () => {
+      throw new Error('groq should never be called for a vision request');
+    });
+    const anthropic = mockAdapter('anthropic', async () => {
+      throw new Error('anthropic should not be reached since gemini succeeds first');
+    });
+    (gemini as any).supportsVision = true;
+    (groq as any).supportsVision = false;
+    (anthropic as any).supportsVision = true;
+
+    (getProvider as jest.Mock).mockImplementation(
+      (name: ProviderName) => ({ gemini, groq, anthropic }[name as 'gemini' | 'groq' | 'anthropic'])
+    );
+
+    const result = await routeChat({
+      messages: [
+        {
+          role: 'user',
+          content: 'What is in this image?',
+          images: [{ mimeType: 'image/png', base64: 'ZmFrZWRhdGE=' }],
+        },
+      ],
+    });
+
+    expect(result.response.provider).toBe('gemini');
+    expect(groq.chat).not.toHaveBeenCalled();
+  });
+
+  it('throws a vision-specific error when no configured provider supports images', async () => {
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['groq']);
+    const groq = mockAdapter('groq', async () => {
+      throw new Error('should never be called');
+    });
+    (groq as any).supportsVision = false;
+    (getProvider as jest.Mock).mockImplementation(() => groq);
+
+    await expect(
+      routeChat({
+        messages: [
+          { role: 'user', content: 'describe this', images: [{ mimeType: 'image/png', base64: 'x' }] },
+        ],
+      })
+    ).rejects.toThrow('No vision-capable providers are configured');
+  });
 });

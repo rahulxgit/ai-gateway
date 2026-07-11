@@ -1,5 +1,6 @@
 import axios from 'axios';
 import {
+  ChatMessage,
   ProviderAdapter,
   ProviderAdapterOptions,
   ProviderName,
@@ -10,6 +11,29 @@ import { env } from '../config/env';
 import { PRICING_PER_1K_TOKENS } from '../config/routing';
 import { classifyError, estimateCost } from './base.adapter';
 
+// Converts our internal ChatMessage (which carries an optional `images`
+// array) into the OpenAI chat-completions wire format. Messages with no
+// images stay a plain string for maximum compatibility with providers that
+// are stricter about content shape; only image-bearing messages become a
+// content-parts array, per OpenAI's multimodal message spec.
+function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string; content: unknown }> {
+  return messages.map((m) => {
+    if (!m.images || m.images.length === 0) {
+      return { role: m.role, content: m.content };
+    }
+    return {
+      role: m.role,
+      content: [
+        ...m.images.map((img) => ({
+          type: 'image_url',
+          image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+        })),
+        { type: 'text', text: m.content },
+      ],
+    };
+  });
+}
+
 /**
  * OpenAI, Groq, Together AI, and OpenRouter all expose an OpenAI-compatible
  * `/chat/completions` endpoint. Rather than duplicating four near-identical
@@ -19,6 +43,7 @@ import { classifyError, estimateCost } from './base.adapter';
 export class OpenAICompatibleAdapter implements ProviderAdapter {
   readonly name: ProviderName;
   readonly defaultModel: string;
+  readonly supportsVision: boolean;
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly extraHeaders: Record<string, string>;
@@ -29,12 +54,17 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     apiKey: string;
     defaultModel: string;
     extraHeaders?: Record<string, string>;
+    supportsVision?: boolean;
   }) {
     this.name = config.name;
     this.baseUrl = config.baseUrl;
     this.apiKey = config.apiKey;
     this.defaultModel = config.defaultModel;
     this.extraHeaders = config.extraHeaders ?? {};
+    // Defaults to false: most of this gateway's OpenAI-compatible providers
+    // (Groq, Together, DeepSeek, Cerebras, Mistral) run text-only default
+    // models here. Only OpenAI's own default model is vision-capable.
+    this.supportsVision = config.supportsVision ?? false;
   }
 
   isConfigured(): boolean {
@@ -58,7 +88,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         `${this.baseUrl}/chat/completions`,
         {
           model,
-          messages: options.messages,
+          messages: toOpenAIMessages(options.messages),
           temperature: options.temperature ?? 0.7,
           max_tokens: options.maxTokens ?? 1024,
         },
@@ -100,7 +130,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         `${this.baseUrl}/chat/completions`,
         {
           model,
-          messages: options.messages,
+          messages: toOpenAIMessages(options.messages),
           temperature: options.temperature ?? 0.7,
           max_tokens: options.maxTokens ?? 1024,
           stream: true,

@@ -190,6 +190,15 @@ npm run build   # production build to frontend/dist
   The backend extracts the text and folds it into your next message; if a
   project is active, the file is also saved into that project's workspace
   so later requests can reference it automatically.
+- **Image input (vision)** — attach an image and it's sent as real image
+  data to a vision-capable provider (Gemini, Anthropic, or OpenAI — the
+  only three configured here whose default model actually accepts image
+  input), the same way Claude.ai or ChatGPT handle a photo. The router
+  automatically restricts image-bearing requests to vision-capable
+  providers only; if none are configured, you get a clear error naming
+  which keys would enable it, instead of the image silently being ignored.
+  Note: unlike text, attached images are not currently persisted into
+  conversation history — they apply to the turn you send them in.
 
 ## Testing
 

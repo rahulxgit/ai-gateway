@@ -12,9 +12,17 @@ export const apiRateLimiter = rateLimit({
   message: { error: 'Too many requests, please slow down.' },
 });
 
+const imageAttachmentSchema = z.object({
+  mimeType: z.string().regex(/^image\//, 'mimeType must be an image/* type'),
+  // Base64 for a ~15MB image is roughly 20M characters — cap generously
+  // above that so legitimate uploads pass but we still bound payload size.
+  base64: z.string().min(1).max(25_000_000),
+});
+
 const chatMessageSchema = z.object({
   role: z.enum(['system', 'user', 'assistant']),
   content: z.string().min(1).max(env.maxPromptLength),
+  images: z.array(imageAttachmentSchema).max(6).optional(),
 });
 
 export const chatRequestSchema = z.object({
@@ -70,7 +78,7 @@ export function errorHandler(
   if (message.includes('All configured providers failed')) {
     return res.status(502).json({ error: 'All providers failed', detail: message });
   }
-  if (message.includes('No providers are configured')) {
+  if (message.includes('No providers are configured') || message.includes('No vision-capable providers')) {
     return res.status(503).json({ error: message });
   }
   return res.status(500).json({ error: 'Internal server error', detail: message });

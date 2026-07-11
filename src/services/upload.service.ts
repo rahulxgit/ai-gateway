@@ -5,6 +5,7 @@ export interface ExtractedUpload {
   mimeType: string;
   kind: 'text' | 'image' | 'unsupported';
   extractedText: string | null;
+  base64: string | null;
   sizeBytes: number;
 }
 
@@ -53,12 +54,12 @@ export async function extractUpload(
   const base = { filename: originalName, mimeType, sizeBytes: buffer.length };
 
   if (mimeType.startsWith(IMAGE_MIME_PREFIX)) {
-    return { ...base, kind: 'image', extractedText: null };
+    return { ...base, kind: 'image', extractedText: null, base64: buffer.toString('base64') };
   }
 
   if (mimeType === 'application/pdf' || ext === '.pdf') {
     const text = await extractPdfText(buffer);
-    return { ...base, kind: 'text', extractedText: text.trim() };
+    return { ...base, kind: 'text', extractedText: text.trim(), base64: null };
   }
 
   if (
@@ -67,14 +68,14 @@ export async function extractUpload(
   ) {
     const mammoth = await import('mammoth');
     const result = await mammoth.extractRawText({ buffer });
-    return { ...base, kind: 'text', extractedText: result.value.trim() };
+    return { ...base, kind: 'text', extractedText: result.value.trim(), base64: null };
   }
 
   if (TEXT_EXTENSIONS.has(ext) || mimeType.startsWith('text/')) {
-    return { ...base, kind: 'text', extractedText: buffer.toString('utf-8').trim() };
+    return { ...base, kind: 'text', extractedText: buffer.toString('utf-8').trim(), base64: null };
   }
 
-  return { ...base, kind: 'unsupported', extractedText: null };
+  return { ...base, kind: 'unsupported', extractedText: null, base64: null };
 }
 
 const MAX_EXTRACTED_CHARS = 40_000; // ~10k tokens — generous but keeps one file from blowing the context window

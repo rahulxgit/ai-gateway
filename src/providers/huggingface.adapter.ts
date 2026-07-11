@@ -24,6 +24,9 @@ function estimateTokens(messages: ChatMessage[] | string): number {
 export class HuggingFaceAdapter implements ProviderAdapter {
   readonly name = 'huggingface' as const;
   readonly defaultModel = 'meta-llama/Llama-3.3-70B-Instruct';
+  // The default model here is text-only; HF's router doesn't reliably
+  // expose a vision-capable chat model in this slot.
+  readonly supportsVision = false;
 
   isConfigured(): boolean {
     return Boolean(env.hfApiKey);

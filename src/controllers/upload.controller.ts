@@ -13,7 +13,7 @@ export async function postUpload(req: Request, res: Response) {
 
   if (extracted.kind === 'unsupported') {
     res.status(415).json({
-      error: `Unsupported file type: ${file.mimetype || 'unknown'}. Supported: PDF, DOCX, and plain text formats (images are accepted but not yet used for vision).`,
+      error: `Unsupported file type: ${file.mimetype || 'unknown'}. Supported: images, PDF, DOCX, and plain text formats.`,
     });
     return;
   }
@@ -29,7 +29,10 @@ export async function postUpload(req: Request, res: Response) {
 
   // If a projectId was provided, also save the extracted text into the
   // project workspace so it persists and gets picked up as a "relevant
-  // file" in later requests, not just this one.
+  // file" in later requests, not just this one. Images aren't persisted
+  // into the project workspace (would bloat it with large base64 blobs);
+  // they're returned directly for the client to attach to its next
+  // /chat request instead.
   const projectId = req.body?.projectId as string | undefined;
   if (projectId && contextText) {
     writeFile(projectId, `uploads/${file.originalname}`, contextText, null, 'uploaded by user');
@@ -41,6 +44,7 @@ export async function postUpload(req: Request, res: Response) {
     kind: extracted.kind,
     sizeBytes: extracted.sizeBytes,
     extractedText: contextText,
+    base64: extracted.base64,
     truncated,
     savedToProject: Boolean(projectId && contextText),
   });

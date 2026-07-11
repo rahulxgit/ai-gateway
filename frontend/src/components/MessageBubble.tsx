@@ -9,8 +9,24 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-panel-raised px-4 py-2.5 text-[15px] leading-relaxed text-ink whitespace-pre-wrap break-words">
-          {message.content}
+        <div className="flex max-w-[75%] flex-col items-end gap-2">
+          {message.images && message.images.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {message.images.map((img, i) => (
+                <img
+                  key={i}
+                  src={`data:${img.mimeType};base64,${img.base64}`}
+                  alt="attached"
+                  className="h-32 w-32 rounded-lg border border-hairline object-cover"
+                />
+              ))}
+            </div>
+          )}
+          {message.content && (
+            <div className="rounded-2xl rounded-br-sm bg-panel-raised px-4 py-2.5 text-[15px] leading-relaxed text-ink whitespace-pre-wrap break-words">
+              {message.content}
+            </div>
+          )}
         </div>
       </div>
     );

@@ -20,6 +20,11 @@ export type TaskType =
   | 'large-context'
   | 'general';
 
+export interface ImageAttachment {
+  mimeType: string;
+  base64: string;
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -27,6 +32,7 @@ export interface ChatMessage {
   model?: string | null;
   failoverChain?: ProviderName[];
   createdAt?: string;
+  images?: ImageAttachment[];
 }
 
 export interface ChatResult {
@@ -117,6 +123,7 @@ export interface UploadResult {
   kind: 'text' | 'image' | 'unsupported';
   sizeBytes: number;
   extractedText: string | null;
+  base64: string | null;
   truncated: boolean;
   savedToProject: boolean;
 }

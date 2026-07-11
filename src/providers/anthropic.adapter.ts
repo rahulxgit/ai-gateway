@@ -18,6 +18,27 @@ function splitSystem(messages: ChatMessage[]): { system?: string; rest: ChatMess
   return { system: systemMsgs.length ? systemMsgs.join('\n') : undefined, rest };
 }
 
+// Anthropic's Messages API wants image blocks and text blocks as separate
+// entries in a content array — a different shape from OpenAI's image_url
+// parts. Messages without images stay a plain string for compatibility.
+function toAnthropicMessages(messages: ChatMessage[]) {
+  return messages.map((m) => {
+    if (!m.images || m.images.length === 0) {
+      return { role: m.role, content: m.content };
+    }
+    return {
+      role: m.role,
+      content: [
+        ...m.images.map((img) => ({
+          type: 'image',
+          source: { type: 'base64', media_type: img.mimeType, data: img.base64 },
+        })),
+        { type: 'text', text: m.content },
+      ],
+    };
+  });
+}
+
 export class AnthropicAdapter implements ProviderAdapter {
   readonly name = 'anthropic' as const;
   // claude-haiku-4-5 is Anthropic's current cheapest, fastest model — a
@@ -25,6 +46,7 @@ export class AnthropicAdapter implements ProviderAdapter {
   // The router can still be pointed at Sonnet 5 for coding/reasoning tasks
   // via the `model` field on a request.
   readonly defaultModel = 'claude-haiku-4-5-20251001';
+  readonly supportsVision = true;
 
   isConfigured(): boolean {
     return Boolean(env.anthropicApiKey);
@@ -48,7 +70,7 @@ export class AnthropicAdapter implements ProviderAdapter {
         {
           model: options.model ?? this.defaultModel,
           system,
-          messages: rest.map((m) => ({ role: m.role, content: m.content })),
+          messages: toAnthropicMessages(rest),
           max_tokens: options.maxTokens ?? 1024,
           temperature: options.temperature ?? 0.7,
         },
@@ -92,7 +114,7 @@ export class AnthropicAdapter implements ProviderAdapter {
         {
           model,
           system,
-          messages: rest.map((m) => ({ role: m.role, content: m.content })),
+          messages: toAnthropicMessages(rest),
           max_tokens: options.maxTokens ?? 1024,
           temperature: options.temperature ?? 0.7,
           stream: true,

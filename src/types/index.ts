@@ -25,9 +25,15 @@ export type TaskType =
   | 'large-context'
   | 'general';
 
+export interface ImageAttachment {
+  mimeType: string;
+  base64: string; // raw base64, no "data:" prefix
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  images?: ImageAttachment[];
 }
 
 export interface ChatRequest {
@@ -123,6 +129,10 @@ export interface ProviderAdapterOptions {
 export interface ProviderAdapter {
   readonly name: ProviderName;
   readonly defaultModel: string;
+  // Whether this adapter's default model accepts image input. The router
+  // uses this to keep image-bearing requests from ever reaching a
+  // provider that would silently ignore or error on the attachment.
+  readonly supportsVision: boolean;
   isConfigured(): boolean;
   chat(options: ProviderAdapterOptions): Promise<ProviderResponse>;
   chatStream(

@@ -54,11 +54,12 @@ describe('extractUpload', () => {
     expect(result.extractedText).toBe('hello world\nsecond line');
   });
 
-  it('flags images as kind "image" without attempting text extraction', async () => {
+  it('flags images as kind "image" and returns usable base64 data', async () => {
     const buf = Buffer.from([0xff, 0xd8, 0xff]); // JPEG magic bytes, content irrelevant here
     const result = await extractUpload(buf, 'photo.jpg', 'image/jpeg');
     expect(result.kind).toBe('image');
     expect(result.extractedText).toBeNull();
+    expect(result.base64).toBe(buf.toString('base64'));
   });
 
   it('flags unrecognized binary formats as unsupported', async () => {

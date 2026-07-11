@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { api } from '../lib/api';
-import type { UploadResult } from '../types';
+import type { ImageAttachment, UploadResult } from '../types';
 
 interface PendingAttachment {
   id: string;
@@ -17,7 +17,7 @@ export function Composer({
   disabled,
   projectId,
 }: {
-  onSend: (text: string) => void;
+  onSend: (text: string, images?: ImageAttachment[]) => void;
   disabled: boolean;
   projectId?: string;
 }) {
@@ -54,19 +54,29 @@ export function Composer({
 
   const submit = () => {
     const text = value.trim();
-    const readyAttachments = attachments.filter((a) => a.status === 'ready' && a.result?.extractedText);
+    const readyAttachments = attachments.filter((a) => a.status === 'ready' && a.result);
     if ((!text && readyAttachments.length === 0) || disabled) return;
 
-    // Extracted file content is prepended as clearly-delimited context ahead
-    // of the user's own message, since the backend treats the whole thing
-    // as one user turn — this keeps it simple and works with the existing
-    // orchestrator without any protocol changes.
-    const attachmentBlocks = readyAttachments
+    // Text-extractable files (PDF/DOCX/plain text) get prepended as
+    // clearly-delimited context ahead of the user's message — the backend
+    // treats this as one user turn either way. Images are handled
+    // completely differently: they travel as real image data on the
+    // message so a vision-capable provider actually sees the picture,
+    // not a text description of it.
+    const textAttachments = readyAttachments.filter((a) => a.result!.kind === 'text');
+    const imageAttachments = readyAttachments.filter((a) => a.result!.kind === 'image');
+
+    const attachmentBlocks = textAttachments
       .map((a) => `--- Attached file: ${a.result!.filename} ---\n${a.result!.extractedText}\n--- end of attachment ---`)
       .join('\n\n');
     const finalText = attachmentBlocks ? `${attachmentBlocks}\n\n${text}`.trim() : text;
 
-    onSend(finalText);
+    const images: ImageAttachment[] = imageAttachments.map((a) => ({
+      mimeType: a.result!.mimeType,
+      base64: a.result!.base64!,
+    }));
+
+    onSend(finalText || 'What is in this image?', images.length > 0 ? images : undefined);
     setValue('');
     setAttachments([]);
     requestAnimationFrame(() => {
@@ -80,25 +90,35 @@ export function Composer({
     <div className="rounded-xl border border-hairline bg-panel-raised p-2 focus-within:border-signal-dim">
       {attachments.length > 0 && (
         <div className="mb-1.5 flex flex-wrap gap-1.5 px-1">
-          {attachments.map((a) => (
-            <div
-              key={a.id}
-              className={`flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[11px] ${
-                a.status === 'error'
-                  ? 'border-danger/40 bg-danger/10 text-danger'
-                  : a.status === 'uploading'
-                    ? 'border-hairline bg-panel text-ink-faint'
-                    : 'border-ok-dim bg-ok-dim/20 text-ok'
-              }`}
-            >
-              {a.status === 'uploading' && <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-ink-faint" />}
-              <span className="max-w-[160px] truncate">{a.filename}</span>
-              {a.status === 'error' && <span className="opacity-80">· {a.error}</span>}
-              <button onClick={() => removeAttachment(a.id)} className="opacity-60 hover:opacity-100">
-                ✕
-              </button>
-            </div>
-          ))}
+          {attachments.map((a) => {
+            const isImage = a.result?.kind === 'image' && a.result.base64;
+            return (
+              <div
+                key={a.id}
+                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[11px] ${
+                  a.status === 'error'
+                    ? 'border-danger/40 bg-danger/10 text-danger'
+                    : a.status === 'uploading'
+                      ? 'border-hairline bg-panel text-ink-faint'
+                      : 'border-ok-dim bg-ok-dim/20 text-ok'
+                }`}
+              >
+                {a.status === 'uploading' && <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-ink-faint" />}
+                {isImage && (
+                  <img
+                    src={`data:${a.result!.mimeType};base64,${a.result!.base64}`}
+                    alt={a.filename}
+                    className="h-5 w-5 rounded object-cover"
+                  />
+                )}
+                <span className="max-w-[160px] truncate">{a.filename}</span>
+                {a.status === 'error' && <span className="opacity-80">· {a.error}</span>}
+                <button onClick={() => removeAttachment(a.id)} className="opacity-60 hover:opacity-100">
+                  ✕
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -117,7 +137,7 @@ export function Composer({
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          title="Attach PDF, DOCX, or text file"
+          title="Attach an image, PDF, DOCX, or text file"
           className="shrink-0 rounded-lg border border-hairline p-2 text-ink-muted transition hover:border-signal-dim hover:text-signal disabled:cursor-not-allowed disabled:opacity-40"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">

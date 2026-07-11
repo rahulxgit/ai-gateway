@@ -26,15 +26,31 @@ export class AllProvidersFailedError extends Error {
   }
 }
 
+function requestHasImages(request: ChatRequest): boolean {
+  return request.messages.some((m) => m.images && m.images.length > 0);
+}
+
 function candidateOrder(request: ChatRequest): ProviderName[] {
   const configured = new Set(listConfiguredProviders());
-  const order = buildProviderOrder(request.taskType, request.forceProvider);
+  const order = buildProviderOrder(request.taskType, request.forceProvider).filter((p) =>
+    configured.has(p)
+  );
+
+  // If any message carries an image, only providers whose default model
+  // actually accepts image input are eligible — sending an image to a
+  // text-only model would silently be dropped or rejected by that
+  // provider's API, which is worse than failing over immediately. Checked
+  // only against already-configured providers so we never call getProvider
+  // on something that was never set up in the first place.
+  const eligible = requestHasImages(request)
+    ? order.filter((p) => getProvider(p).supportsVision)
+    : order;
 
   // Prefer providers that look healthy right now, but never drop a provider
   // entirely just because it looked unhealthy a moment ago — keep it as a
   // last-resort candidate in case it has recovered.
-  const healthy = order.filter((p) => configured.has(p) && isLikelyHealthy(p));
-  const degraded = order.filter((p) => configured.has(p) && !isLikelyHealthy(p));
+  const healthy = eligible.filter((p) => isLikelyHealthy(p));
+  const degraded = eligible.filter((p) => !isLikelyHealthy(p));
   return [...healthy, ...degraded];
 }
 
@@ -47,7 +63,11 @@ function candidateOrder(request: ChatRequest): ProviderName[] {
 export async function routeChat(request: ChatRequest): Promise<RouteResult> {
   const order = candidateOrder(request);
   if (order.length === 0) {
-    throw new Error('No providers are configured. Set at least one *_API_KEY in .env');
+    throw new Error(
+      requestHasImages(request)
+        ? 'No vision-capable providers are configured. Set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to send images.'
+        : 'No providers are configured. Set at least one *_API_KEY in .env'
+    );
   }
 
   const attempted: ProviderName[] = [];
@@ -118,7 +138,11 @@ export async function routeChatStream(
 ): Promise<RouteResult> {
   const order = candidateOrder(request);
   if (order.length === 0) {
-    throw new Error('No providers are configured. Set at least one *_API_KEY in .env');
+    throw new Error(
+      requestHasImages(request)
+        ? 'No vision-capable providers are configured. Set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to send images.'
+        : 'No providers are configured. Set at least one *_API_KEY in .env'
+    );
   }
 
   const attempted: ProviderName[] = [];
