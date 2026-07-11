@@ -6,6 +6,8 @@ import { GroqAdapter } from './groq.adapter';
 import { TogetherAdapter } from './together.adapter';
 import { OpenRouterAdapter } from './openrouter.adapter';
 import { HuggingFaceAdapter } from './huggingface.adapter';
+import { DeepSeekAdapter } from './deepseek.adapter';
+import { KimiAdapter } from './kimi.adapter';
 
 // Single source of truth for every provider instance. To add a new
 // provider: write an adapter implementing ProviderAdapter, instantiate it
@@ -19,6 +21,8 @@ export const providerRegistry: Record<ProviderName, ProviderAdapter> = {
   together: new TogetherAdapter(),
   openrouter: new OpenRouterAdapter(),
   huggingface: new HuggingFaceAdapter(),
+  deepseek: new DeepSeekAdapter(),
+  kimi: new KimiAdapter(),
 };
 
 export function getProvider(name: ProviderName): ProviderAdapter {
@@ -29,4 +33,8 @@ export function listConfiguredProviders(): ProviderName[] {
   return (Object.keys(providerRegistry) as ProviderName[]).filter((name) =>
     providerRegistry[name].isConfigured()
   );
+}
+
+export function listAllProviders(): ProviderName[] {
+  return Object.keys(providerRegistry) as ProviderName[];
 }

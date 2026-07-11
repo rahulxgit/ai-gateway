@@ -31,7 +31,7 @@ describe('GET /health', () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
-    expect(res.body.providers.length).toBe(7);
+    expect(res.body.providers.length).toBe(9);
   });
 });
 
@@ -40,7 +40,7 @@ describe('GET /providers', () => {
     const res = await request(app).get('/providers');
     expect(res.status).toBe(200);
     expect(res.body.all).toEqual(
-      expect.arrayContaining(['gemini', 'anthropic', 'openai', 'groq', 'together', 'openrouter', 'huggingface'])
+      expect.arrayContaining(['gemini', 'anthropic', 'openai', 'groq', 'together', 'openrouter', 'huggingface', 'deepseek', 'kimi'])
     );
   });
 });

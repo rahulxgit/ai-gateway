@@ -28,6 +28,8 @@ export const env = {
   togetherApiKey: optional('TOGETHER_API_KEY'),
   openrouterApiKey: optional('OPENROUTER_API_KEY'),
   hfApiKey: optional('HF_API_KEY'),
+  deepseekApiKey: optional('DEEPSEEK_API_KEY'),
+  kimiApiKey: optional('KIMI_API_KEY'),
 
   redisUrl: optional('REDIS_URL', ''),
   cacheEnabled: optional('CACHE_ENABLED', 'false') === 'true',

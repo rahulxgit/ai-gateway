@@ -8,6 +8,8 @@ const LABELS: Record<ProviderName, string> = {
   together: 'together',
   openrouter: 'openrouter',
   huggingface: 'huggingface',
+  deepseek: 'deepseek',
+  kimi: 'kimi',
 };
 
 /**

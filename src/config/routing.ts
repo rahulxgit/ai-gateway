@@ -6,7 +6,9 @@ import { ProviderName, TaskType } from '../types';
 export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'gemini',
   'anthropic',
+  'deepseek',
   'groq',
+  'kimi',
   'together',
   'openrouter',
   'openai',
@@ -17,12 +19,16 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
 // in order, before falling back to DEFAULT_FAILOVER_ORDER for anything not
 // already tried.
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
-  coding: ['anthropic', 'gemini', 'openai', 'openrouter'],
-  reasoning: ['anthropic', 'openai', 'gemini'],
+  // DeepSeek and Kimi both benchmark very strongly on SWE-bench-style coding
+  // tasks at a fraction of the cost of Anthropic/OpenAI, so they lead here.
+  coding: ['deepseek', 'anthropic', 'kimi', 'gemini', 'openai', 'openrouter'],
+  reasoning: ['deepseek', 'anthropic', 'openai', 'gemini'],
   creative: ['gemini', 'openai', 'anthropic'],
   fast: ['groq', 'together', 'gemini'],
-  cheap: ['together', 'groq', 'openrouter', 'huggingface'],
-  'large-context': ['gemini', 'anthropic', 'openai'],
+  cheap: ['deepseek', 'together', 'groq', 'openrouter', 'huggingface'],
+  // Kimi's 256K context window is the largest in this gateway, so it leads
+  // for tasks that need to hold a lot of material at once.
+  'large-context': ['kimi', 'gemini', 'anthropic', 'openai'],
   general: DEFAULT_FAILOVER_ORDER,
 };
 
@@ -37,6 +43,8 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   together: 0.0002,
   openrouter: 0.001,
   huggingface: 0.0001,
+  deepseek: 0.0002,
+  kimi: 0.0018,
 };
 
 export function buildProviderOrder(

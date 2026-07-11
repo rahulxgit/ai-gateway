@@ -74,6 +74,32 @@ All config is via environment variables — see `.env.example`. You only need
 **one** provider key to run; the gateway adapts to whatever's configured and
 reports the rest as unavailable via `/health` and `/providers`.
 
+### Providers
+
+Nine providers are supported, all behind the same `ProviderAdapter`
+interface: Gemini, Anthropic, OpenAI, Groq, Together AI, OpenRouter,
+Hugging Face, DeepSeek, and Kimi (Moonshot AI). A few notes on cost, since
+"free" means different things across them:
+
+- **Gemini, Groq, Together, Hugging Face, OpenRouter** — genuinely free
+  tiers exist (limits and reliability vary; Groq's free tier is currently
+  the most generous for general chat).
+- **DeepSeek** — 5 million free tokens on signup, no card required, then
+  roughly $0.14 per million tokens after. One of the strongest
+  price-to-coding-quality ratios available.
+- **Kimi (Moonshot)** — requires a minimum $1 recharge to activate the API
+  (not free-to-start), then cheap per-token after. Notable for a very large
+  context window, so it leads the `large-context` task routing.
+- **Zero-cost alternative to DeepSeek/Kimi**: OpenRouter (free to create a
+  key for) hosts `:free`-suffixed variants of both, e.g.
+  `deepseek/deepseek-chat-v3.1:free` or `moonshotai/kimi-k2:free`. Pass
+  `forceProvider: "openrouter"` with `model: "deepseek/deepseek-chat-v3.1:free"`
+  in a `/chat` request to use them at no cost.
+
+Task-based routing (`taskType: "coding"`, `"reasoning"`, etc.) automatically
+prefers whichever provider tends to perform best for that kind of work —
+see `src/config/routing.ts` to adjust the priority order.
+
 ## API
 
 | Method | Route | Purpose |

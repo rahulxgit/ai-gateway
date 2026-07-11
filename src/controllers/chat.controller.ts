@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { orchestrateChat, orchestrateChatStream } from '../services/orchestrator.service';
 import { getHealthSnapshot } from '../services/health.service';
-import { listConfiguredProviders } from '../providers/registry';
+import { listConfiguredProviders, listAllProviders } from '../providers/registry';
 import { logger } from '../utils/logger';
 
 export async function postChat(req: Request, res: Response) {
@@ -31,7 +31,7 @@ export async function postChatStream(req: Request, res: Response) {
 export function getProviders(_req: Request, res: Response) {
   res.json({
     configured: listConfiguredProviders(),
-    all: ['gemini', 'anthropic', 'openai', 'groq', 'together', 'openrouter', 'huggingface'],
+    all: listAllProviders(),
   });
 }
 

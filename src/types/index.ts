@@ -10,7 +10,9 @@ export type ProviderName =
   | 'groq'
   | 'together'
   | 'openrouter'
-  | 'huggingface';
+  | 'huggingface'
+  | 'deepseek'
+  | 'kimi';
 
 export type TaskType =
   | 'coding'
