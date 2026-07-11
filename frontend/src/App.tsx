@@ -15,6 +15,7 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [taskType, setTaskType] = useState<TaskType>('general');
   const [forceProvider, setForceProvider] = useState<ProviderName | 'auto'>('auto');
+  const [modelOverride, setModelOverride] = useState('');
   const [activeProject, setActiveProject] = useState<ProjectMemory | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +74,7 @@ export default function App() {
         messages: [{ role: 'user', content: text }],
         taskType,
         forceProvider: forceProvider === 'auto' ? undefined : forceProvider,
+        model: modelOverride || undefined,
       });
 
       if (!activeSessionId) {
@@ -121,6 +123,8 @@ export default function App() {
               onTaskTypeChange={setTaskType}
               forceProvider={forceProvider}
               onForceProviderChange={setForceProvider}
+              model={modelOverride}
+              onModelChange={setModelOverride}
             />
           </div>
           <div className="flex items-center gap-4">

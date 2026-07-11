@@ -35,6 +35,7 @@ export interface SendChatInput {
   messages: { role: 'user' | 'system'; content: string }[];
   taskType?: TaskType;
   forceProvider?: ProviderName;
+  model?: string;
 }
 
 export const api = {

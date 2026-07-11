@@ -120,3 +120,16 @@ export interface UploadResult {
   truncated: boolean;
   savedToProject: boolean;
 }
+
+// Known-good ":free"-suffixed OpenRouter models — zero cost against an
+// OpenRouter key you already have, no separate billing with DeepSeek or
+// Moonshot required. Curated rather than fetched live since OpenRouter's
+// free catalog changes; update this list if a model gets deprecated.
+export const OPENROUTER_FREE_MODELS: { value: string; label: string }[] = [
+  { value: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek Chat V3.1 (free)' },
+  { value: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (free, reasoning)' },
+  { value: 'moonshotai/kimi-k2:free', label: 'Kimi K2 (free)' },
+  { value: 'qwen/qwen3-235b-a22b:free', label: 'Qwen3 235B (free)' },
+  { value: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (free)' },
+  { value: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B (free)' },
+];
