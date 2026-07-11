@@ -37,6 +37,7 @@ export interface SendChatInput {
   taskType?: TaskType;
   forceProvider?: ProviderName;
   model?: string;
+  maxTokens?: number;
 }
 
 export const api = {

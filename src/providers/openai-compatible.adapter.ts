@@ -90,7 +90,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           model,
           messages: toOpenAIMessages(options.messages),
           temperature: options.temperature ?? 0.7,
-          max_tokens: options.maxTokens ?? 1024,
+          max_tokens: options.maxTokens ?? 4096,
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs }
       );
@@ -132,7 +132,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           model,
           messages: toOpenAIMessages(options.messages),
           temperature: options.temperature ?? 0.7,
-          max_tokens: options.maxTokens ?? 1024,
+          max_tokens: options.maxTokens ?? 4096,
           stream: true,
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs, responseType: 'stream' }

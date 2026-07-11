@@ -56,7 +56,7 @@ export class GeminiAdapter implements ProviderAdapter {
           systemInstruction: systemInstruction(options.messages),
           generationConfig: {
             temperature: options.temperature ?? 0.7,
-            maxOutputTokens: options.maxTokens ?? 1024,
+            maxOutputTokens: options.maxTokens ?? 4096,
           },
         },
         { timeout: env.requestTimeoutMs }
@@ -100,7 +100,7 @@ export class GeminiAdapter implements ProviderAdapter {
           systemInstruction: systemInstruction(options.messages),
           generationConfig: {
             temperature: options.temperature ?? 0.7,
-            maxOutputTokens: options.maxTokens ?? 1024,
+            maxOutputTokens: options.maxTokens ?? 4096,
           },
         },
         { timeout: env.requestTimeoutMs, responseType: 'stream' }

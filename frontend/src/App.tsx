@@ -77,6 +77,11 @@ export default function App() {
         taskType,
         forceProvider: forceProvider === 'auto' ? undefined : forceProvider,
         model: modelOverride || undefined,
+        // Code output (HTML/CSS/full files) tends to run much longer than
+        // conversational replies — the 4096-token adapter default was
+        // silently truncating pages mid-attribute. Ask for more headroom
+        // specifically for coding tasks rather than raising it globally.
+        maxTokens: taskType === 'coding' ? 8192 : undefined,
       });
 
       if (!activeSessionId) {
