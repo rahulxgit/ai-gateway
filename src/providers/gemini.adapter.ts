@@ -28,7 +28,11 @@ function systemInstruction(messages: ChatMessage[]) {
 
 export class GeminiAdapter implements ProviderAdapter {
   readonly name = 'gemini' as const;
-  readonly defaultModel = 'gemini-2.0-flash';
+  // gemini-2.0-flash was deprecated and shut down March 2026. 2.5 Flash-Lite
+  // is Google's cheapest current model ($0.10/$0.40 per 1M tokens) and has
+  // the most generous free-tier limits of any Gemini model (15 RPM / 1,000
+  // RPD as of mid-2026) — ideal as a default for a free/cheap-first gateway.
+  readonly defaultModel = 'gemini-2.5-flash-lite';
 
   isConfigured(): boolean {
     return Boolean(env.geminiApiKey);

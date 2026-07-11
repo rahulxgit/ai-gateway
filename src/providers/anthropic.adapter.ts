@@ -20,7 +20,11 @@ function splitSystem(messages: ChatMessage[]): { system?: string; rest: ChatMess
 
 export class AnthropicAdapter implements ProviderAdapter {
   readonly name = 'anthropic' as const;
-  readonly defaultModel = 'claude-sonnet-4-6';
+  // claude-haiku-4-5 is Anthropic's current cheapest, fastest model — a
+  // better fit for a cost-conscious gateway default than a full Sonnet.
+  // The router can still be pointed at Sonnet 5 for coding/reasoning tasks
+  // via the `model` field on a request.
+  readonly defaultModel = 'claude-haiku-4-5-20251001';
 
   isConfigured(): boolean {
     return Boolean(env.anthropicApiKey);

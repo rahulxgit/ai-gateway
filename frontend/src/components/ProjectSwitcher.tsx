@@ -59,7 +59,7 @@ export function ProjectSwitcher({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-1.5 w-72 rounded-lg border border-hairline bg-panel-raised p-1.5 shadow-xl">
+        <div className="absolute left-0 top-full z-30 mt-1.5 w-72 max-w-[90vw] rounded-lg border border-hairline bg-panel-raised p-1.5 shadow-xl">
           <button
             onClick={() => {
               onSelect(null);

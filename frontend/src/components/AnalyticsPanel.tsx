@@ -12,7 +12,7 @@ export function AnalyticsPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-20 flex justify-end bg-black/40" onClick={onClose}>
       <div
-        className="h-full w-96 overflow-y-auto scrollbar-thin border-l border-hairline bg-panel p-5"
+        className="h-full w-full max-w-full overflow-y-auto scrollbar-thin border-l border-hairline bg-panel p-4 sm:w-96 sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between">
