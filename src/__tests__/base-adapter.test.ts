@@ -1,5 +1,5 @@
 import { AxiosError } from 'axios';
-import { classifyError, estimateCost } from '../providers/base.adapter';
+import { classifyError, createSseFrameParser, estimateCost } from '../providers/base.adapter';
 import { ProviderError } from '../types';
 
 function fakeAxiosError(status?: number, code?: string, data?: unknown): AxiosError {
@@ -66,5 +66,26 @@ describe('estimateCost', () => {
     expect(estimateCost(1000, 0.006)).toBeCloseTo(0.006);
     expect(estimateCost(500, 0.006)).toBeCloseTo(0.003);
     expect(estimateCost(0, 0.006)).toBe(0);
+  });
+});
+
+describe('createSseFrameParser', () => {
+  it('waits for a complete SSE frame when JSON is split across network chunks', () => {
+    const payloads: string[] = [];
+    const parse = createSseFrameParser((data) => payloads.push(data));
+
+    parse('data: {"choices":[{"delta":{"content":"Hel');
+    parse('lo"}}]}\n\n');
+
+    expect(payloads).toEqual(['{"choices":[{"delta":{"content":"Hello"}}]}']);
+  });
+
+  it('handles CRLF frames, comments, and multiple events in one chunk', () => {
+    const payloads: string[] = [];
+    const parse = createSseFrameParser((data) => payloads.push(data));
+
+    parse(': keep-alive\r\ndata: first\r\n\r\ndata: second\r\n\r\n');
+
+    expect(payloads).toEqual(['first', 'second']);
   });
 });

@@ -46,3 +46,31 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
 export function estimateCost(totalTokens: number, pricePer1k: number): number {
   return Number(((totalTokens / 1000) * pricePer1k).toFixed(6));
 }
+
+/**
+ * Turns arbitrary network chunks from an SSE response into complete `data:`
+ * payloads. TCP/HTTP chunk boundaries are unrelated to SSE event boundaries,
+ * so parsing each incoming chunk independently can drop split JSON events.
+ */
+export function createSseFrameParser(onData: (data: string) => void) {
+  let buffer = '';
+
+  return (chunk: Buffer | string): void => {
+    buffer = (buffer + chunk.toString()).replace(/\r\n/g, '\n');
+
+    let frameEnd = buffer.indexOf('\n\n');
+    while (frameEnd !== -1) {
+      const frame = buffer.slice(0, frameEnd);
+      buffer = buffer.slice(frameEnd + 2);
+
+      const data = frame
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).replace(/^ /, ''))
+        .join('\n');
+
+      if (data) onData(data);
+      frameEnd = buffer.indexOf('\n\n');
+    }
+  };
+}

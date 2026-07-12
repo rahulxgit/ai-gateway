@@ -8,7 +8,7 @@ import {
 } from '../types';
 import { env } from '../config/env';
 import { PRICING_PER_1K_TOKENS } from '../config/routing';
-import { classifyError, estimateCost } from './base.adapter';
+import { classifyError, createSseFrameParser, estimateCost } from './base.adapter';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -126,29 +126,25 @@ export class AnthropicAdapter implements ProviderAdapter {
       );
 
       await new Promise<void>((resolve, reject) => {
-        response.data.on('data', (buf: Buffer) => {
-          for (const line of buf.toString().split('\n')) {
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (!payload) continue;
-            try {
-              const evt = JSON.parse(payload);
-              if (evt.type === 'content_block_delta') {
-                const delta = evt.delta?.text ?? '';
-                fullText += delta;
-                onChunk({ provider: this.name, model, delta, done: false });
-              }
-              if (evt.type === 'message_delta' && evt.usage) {
-                usage.completionTokens = evt.usage.output_tokens ?? usage.completionTokens;
-              }
-              if (evt.type === 'message_start' && evt.message?.usage) {
-                usage.promptTokens = evt.message.usage.input_tokens ?? 0;
-              }
-            } catch {
-              // ignore partial/non-JSON keep-alive lines
+        const parseFrame = createSseFrameParser((payload) => {
+          try {
+            const evt = JSON.parse(payload);
+            if (evt.type === 'content_block_delta') {
+              const delta = evt.delta?.text ?? '';
+              fullText += delta;
+              onChunk({ provider: this.name, model, delta, done: false });
             }
+            if (evt.type === 'message_delta' && evt.usage) {
+              usage.completionTokens = evt.usage.output_tokens ?? usage.completionTokens;
+            }
+            if (evt.type === 'message_start' && evt.message?.usage) {
+              usage.promptTokens = evt.message.usage.input_tokens ?? 0;
+            }
+          } catch {
+            // Ignore malformed keep-alive frames without dropping buffered data.
           }
         });
+        response.data.on('data', parseFrame);
         response.data.on('end', () => resolve());
         response.data.on('error', reject);
       });
