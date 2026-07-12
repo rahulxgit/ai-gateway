@@ -81,7 +81,12 @@ export default function App() {
         // conversational replies — the 4096-token adapter default was
         // silently truncating pages mid-attribute. Ask for more headroom
         // specifically for coding tasks rather than raising it globally.
-        maxTokens: taskType === 'coding' ? 8192 : undefined,
+        // Requesting a higher ceiling costs nothing extra — you only pay
+        // for tokens the model actually generates, not the cap itself —
+        // so there's no reason to limit this headroom to the "coding"
+        // task specifically. Long resumes, essays, and detailed answers
+        // in any mode were hitting the same truncation.
+        maxTokens: 8192,
       });
 
       if (!activeSessionId) {
