@@ -9,7 +9,7 @@ import {
 } from '../types';
 import { env } from '../config/env';
 import { PRICING_PER_1K_TOKENS } from '../config/routing';
-import { classifyError, estimateCost } from './base.adapter';
+import { classifyError, createSseFrameParser, estimateCost } from './base.adapter';
 
 // Converts our internal ChatMessage (which carries an optional `images`
 // array) into the OpenAI chat-completions wire format. Messages with no
@@ -145,28 +145,25 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       );
 
       await new Promise<void>((resolve, reject) => {
-        response.data.on('data', (buf: Buffer) => {
-          for (const line of buf.toString().split('\n')) {
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (!payload || payload === '[DONE]') continue;
-            try {
-              const evt = JSON.parse(payload);
-              const delta = evt.choices?.[0]?.delta?.content ?? '';
-              if (delta) {
-                fullText += delta;
-                onChunk({ provider: this.name, model, delta, done: false });
-              }
-              if (evt.usage) {
-                usage.promptTokens = evt.usage.prompt_tokens ?? usage.promptTokens;
-                usage.completionTokens = evt.usage.completion_tokens ?? usage.completionTokens;
-                usage.totalTokens = evt.usage.total_tokens ?? usage.totalTokens;
-              }
-            } catch {
-              // ignore partial keep-alive lines
+        const parseFrame = createSseFrameParser((payload) => {
+          if (payload === '[DONE]') return;
+          try {
+            const evt = JSON.parse(payload);
+            const delta = evt.choices?.[0]?.delta?.content ?? '';
+            if (delta) {
+              fullText += delta;
+              onChunk({ provider: this.name, model, delta, done: false });
             }
+            if (evt.usage) {
+              usage.promptTokens = evt.usage.prompt_tokens ?? usage.promptTokens;
+              usage.completionTokens = evt.usage.completion_tokens ?? usage.completionTokens;
+              usage.totalTokens = evt.usage.total_tokens ?? usage.totalTokens;
+            }
+          } catch {
+            // Ignore malformed keep-alive frames without dropping buffered data.
           }
         });
+        response.data.on('data', parseFrame);
         response.data.on('end', () => resolve());
         response.data.on('error', reject);
       });
