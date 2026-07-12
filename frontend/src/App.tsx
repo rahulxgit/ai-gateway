@@ -82,11 +82,14 @@ export default function App() {
         // silently truncating pages mid-attribute. Ask for more headroom
         // specifically for coding tasks rather than raising it globally.
         // Requesting a higher ceiling costs nothing extra — you only pay
-        // for tokens the model actually generates, not the cap itself —
-        // so there's no reason to limit this headroom to the "coding"
-        // task specifically. Long resumes, essays, and detailed answers
-        // in any mode were hitting the same truncation.
-        maxTokens: 8192,
+        // for tokens the model actually generates, not the cap itself.
+        // 64000 matches the real max output of the two vision-capable
+        // providers most likely to be handling requests (Gemini 2.5
+        // Flash-Lite: 65,536; Claude Haiku 4.5: exactly 64,000). Other
+        // providers with lower real ceilings will simply reject the
+        // request and the router fails over cleanly, same as any other
+        // provider error.
+        maxTokens: 64000,
       });
 
       if (!activeSessionId) {

@@ -71,7 +71,7 @@ export class AnthropicAdapter implements ProviderAdapter {
           model: options.model ?? this.defaultModel,
           system,
           messages: toAnthropicMessages(rest),
-          max_tokens: options.maxTokens ?? 4096,
+          max_tokens: options.maxTokens ?? 64000,
           temperature: options.temperature ?? 0.7,
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs }
@@ -115,7 +115,7 @@ export class AnthropicAdapter implements ProviderAdapter {
           model,
           system,
           messages: toAnthropicMessages(rest),
-          max_tokens: options.maxTokens ?? 4096,
+          max_tokens: options.maxTokens ?? 64000,
           temperature: options.temperature ?? 0.7,
           stream: true,
         },
