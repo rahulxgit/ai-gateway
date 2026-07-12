@@ -14,6 +14,9 @@ export class CerebrasAdapter extends OpenAICompatibleAdapter {
       baseUrl: 'https://api.cerebras.ai/v1',
       apiKey: env.cerebrasApiKey,
       defaultModel: 'gpt-oss-120b',
+      // Not individually verified against Cerebras's real ceiling for this
+      // model — kept conservative. Raise if you confirm a higher limit.
+      maxOutputTokens: 8192,
     });
   }
 }

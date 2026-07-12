@@ -47,6 +47,9 @@ export class AnthropicAdapter implements ProviderAdapter {
   // via the `model` field on a request.
   readonly defaultModel = 'claude-haiku-4-5-20251001';
   readonly supportsVision = true;
+  // Verified against Anthropic's docs: Haiku 4.5 supports exactly 64,000
+  // max output tokens.
+  readonly maxOutputTokens = 64000;
 
   isConfigured(): boolean {
     return Boolean(env.anthropicApiKey);
@@ -71,7 +74,7 @@ export class AnthropicAdapter implements ProviderAdapter {
           model: options.model ?? this.defaultModel,
           system,
           messages: toAnthropicMessages(rest),
-          max_tokens: options.maxTokens ?? 64000,
+          max_tokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
           temperature: options.temperature ?? 0.7,
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs }
@@ -115,7 +118,7 @@ export class AnthropicAdapter implements ProviderAdapter {
           model,
           system,
           messages: toAnthropicMessages(rest),
-          max_tokens: options.maxTokens ?? 64000,
+          max_tokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
           temperature: options.temperature ?? 0.7,
           stream: true,
         },

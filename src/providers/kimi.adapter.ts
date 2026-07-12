@@ -13,6 +13,9 @@ export class KimiAdapter extends OpenAICompatibleAdapter {
       baseUrl: 'https://api.moonshot.ai/v1',
       apiKey: env.kimiApiKey,
       defaultModel: 'kimi-k2.6',
+      // Not individually verified against Moonshot's real ceiling for this
+      // model — kept conservative. Raise if you confirm a higher limit.
+      maxOutputTokens: 8192,
     });
   }
 }

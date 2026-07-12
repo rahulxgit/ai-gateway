@@ -27,6 +27,10 @@ export class HuggingFaceAdapter implements ProviderAdapter {
   // The default model here is text-only; HF's router doesn't reliably
   // expose a vision-capable chat model in this slot.
   readonly supportsVision = false;
+  // Not individually verified against HF's router for this specific model —
+  // kept conservative rather than risking a hard failure on an over-limit
+  // request. Raise this if you confirm a higher real ceiling.
+  readonly maxOutputTokens = 8192;
 
   isConfigured(): boolean {
     return Boolean(env.hfApiKey);
@@ -50,7 +54,7 @@ export class HuggingFaceAdapter implements ProviderAdapter {
           model,
           messages: options.messages,
           temperature: options.temperature ?? 0.7,
-          max_tokens: options.maxTokens ?? 64000,
+          max_tokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs }
       );
@@ -96,7 +100,7 @@ export class HuggingFaceAdapter implements ProviderAdapter {
           model,
           messages: options.messages,
           temperature: options.temperature ?? 0.7,
-          max_tokens: options.maxTokens ?? 64000,
+          max_tokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
           stream: true,
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs, responseType: 'stream' }

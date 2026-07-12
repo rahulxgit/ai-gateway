@@ -8,6 +8,9 @@ export class TogetherAdapter extends OpenAICompatibleAdapter {
       baseUrl: 'https://api.together.xyz/v1',
       apiKey: env.togetherApiKey,
       defaultModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+      // Not individually verified against Together's real ceiling for this
+      // model — kept conservative. Raise if you confirm a higher limit.
+      maxOutputTokens: 8192,
     });
   }
 }

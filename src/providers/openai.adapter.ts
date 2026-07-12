@@ -12,6 +12,9 @@ export class OpenAIAdapter extends OpenAICompatibleAdapter {
       // so minimizing per-token cost is the only lever available here.
       defaultModel: 'gpt-5-nano',
       supportsVision: true,
+      // Verified: the whole GPT-5 family (gpt-5, gpt-5-mini, gpt-5-nano)
+      // shares a 128,000 max output token ceiling.
+      maxOutputTokens: 128000,
     });
   }
 }

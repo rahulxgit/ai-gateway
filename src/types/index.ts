@@ -133,6 +133,11 @@ export interface ProviderAdapter {
   // uses this to keep image-bearing requests from ever reaching a
   // provider that would silently ignore or error on the attachment.
   readonly supportsVision: boolean;
+  // The real max output tokens this adapter's default model supports.
+  // Requests are clamped to this value before being sent, so asking for
+  // more than a provider actually allows fails over cleanly instead of
+  // hard-erroring with an invalid-parameter response.
+  readonly maxOutputTokens: number;
   isConfigured(): boolean;
   chat(options: ProviderAdapterOptions): Promise<ProviderResponse>;
   chatStream(

@@ -39,6 +39,9 @@ export class GeminiAdapter implements ProviderAdapter {
   // RPD as of mid-2026) — ideal as a default for a free/cheap-first gateway.
   readonly defaultModel = 'gemini-2.5-flash-lite';
   readonly supportsVision = true;
+  // Verified against Google's docs: Gemini 2.5 series supports up to
+  // 65,536 output tokens.
+  readonly maxOutputTokens = 65536;
 
   isConfigured(): boolean {
     return Boolean(env.geminiApiKey);
@@ -56,7 +59,7 @@ export class GeminiAdapter implements ProviderAdapter {
           systemInstruction: systemInstruction(options.messages),
           generationConfig: {
             temperature: options.temperature ?? 0.7,
-            maxOutputTokens: options.maxTokens ?? 64000,
+            maxOutputTokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
           },
         },
         { timeout: env.requestTimeoutMs }
@@ -100,7 +103,7 @@ export class GeminiAdapter implements ProviderAdapter {
           systemInstruction: systemInstruction(options.messages),
           generationConfig: {
             temperature: options.temperature ?? 0.7,
-            maxOutputTokens: options.maxTokens ?? 64000,
+            maxOutputTokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
           },
         },
         { timeout: env.requestTimeoutMs, responseType: 'stream' }

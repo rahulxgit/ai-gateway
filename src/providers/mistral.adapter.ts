@@ -12,6 +12,9 @@ export class MistralAdapter extends OpenAICompatibleAdapter {
       baseUrl: 'https://api.mistral.ai/v1',
       apiKey: env.mistralApiKey,
       defaultModel: 'mistral-small-latest',
+      // Not individually verified against Mistral's real ceiling for this
+      // model — kept conservative. Raise if you confirm a higher limit.
+      maxOutputTokens: 8192,
     });
   }
 }

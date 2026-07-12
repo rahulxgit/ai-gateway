@@ -98,6 +98,31 @@ notes on cost, since "free" means different things across them:
   `forceProvider: "openrouter"` with `model: "deepseek/deepseek-chat-v3.1:free"`
   in a `/chat` request to use them at no cost.
 
+### Max output tokens per provider
+
+Every adapter clamps a request's `maxTokens` to its own real ceiling before
+sending it, so asking for more than a provider allows fails over cleanly
+instead of hard-erroring. Verified ceilings (checked against each
+provider's own docs):
+
+| Provider | Max output tokens | Verified? |
+|---|---|---|
+| Gemini (2.5 Flash-Lite) | 65,536 | ✅ |
+| OpenAI (gpt-5-nano) | 128,000 | ✅ |
+| Anthropic (Haiku 4.5) | 64,000 | ✅ |
+| Groq (llama-3.3-70b-versatile) | 32,768 | ✅ |
+| DeepSeek (deepseek-chat) | 8,000 | ✅ |
+| Together, OpenRouter, Hugging Face, Cerebras, Mistral, Kimi | 8,192 | ⚠️ conservative estimate, not individually verified |
+
+If you confirm a higher real ceiling for any of the unverified ones, update
+`maxOutputTokens` in that adapter's constructor (`src/providers/*.adapter.ts`).
+
+**Time-sensitive:** DeepSeek's `deepseek-chat` model ID is scheduled for
+deprecation on **2026-07-24**. It currently works (aliased internally to
+`deepseek-v4-flash`), but will stop accepting that exact model string after
+the deadline — migrate to `deepseek-v4-flash` in `src/providers/deepseek.adapter.ts`
+before then.
+
 Task-based routing (`taskType: "coding"`, `"reasoning"`, etc.) automatically
 prefers whichever provider tends to perform best for that kind of work —
 see `src/config/routing.ts` to adjust the priority order.

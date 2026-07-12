@@ -44,6 +44,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   readonly name: ProviderName;
   readonly defaultModel: string;
   readonly supportsVision: boolean;
+  readonly maxOutputTokens: number;
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly extraHeaders: Record<string, string>;
@@ -55,6 +56,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     defaultModel: string;
     extraHeaders?: Record<string, string>;
     supportsVision?: boolean;
+    maxOutputTokens?: number;
   }) {
     this.name = config.name;
     this.baseUrl = config.baseUrl;
@@ -65,6 +67,10 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     // (Groq, Together, DeepSeek, Cerebras, Mistral) run text-only default
     // models here. Only OpenAI's own default model is vision-capable.
     this.supportsVision = config.supportsVision ?? false;
+    // Conservative default for subclasses that don't specify a verified
+    // real ceiling — better to under-ask than to send an invalid
+    // over-limit value that hard-fails instead of failing over cleanly.
+    this.maxOutputTokens = config.maxOutputTokens ?? 8192;
   }
 
   isConfigured(): boolean {
@@ -90,7 +96,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           model,
           messages: toOpenAIMessages(options.messages),
           temperature: options.temperature ?? 0.7,
-          max_tokens: options.maxTokens ?? 64000,
+          max_tokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs }
       );
@@ -132,7 +138,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           model,
           messages: toOpenAIMessages(options.messages),
           temperature: options.temperature ?? 0.7,
-          max_tokens: options.maxTokens ?? 64000,
+          max_tokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
           stream: true,
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs, responseType: 'stream' }
