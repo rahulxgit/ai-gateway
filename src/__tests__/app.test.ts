@@ -77,6 +77,19 @@ describe('POST /chat validation', () => {
       .send({ messages: [{ role: 'user', content: 'hi' }] });
     expect(res.status).toBe(503);
   });
+
+  it('accepts a large code paste (~2.3M characters, ~50k lines) that would have been rejected by the old 32k-char limit', async () => {
+    const bigCode = Array.from({ length: 50_000 }, (_, i) => `function example${i}() { return ${i} * 2; }`).join(
+      '\n'
+    );
+    const res = await request(app)
+      .post('/chat')
+      .send({ messages: [{ role: 'user', content: bigCode }] });
+    // Reaches the router (503 no-providers) rather than being rejected at
+    // the validation layer (400 invalid body) — that's the fix being tested.
+    expect(res.status).toBe(503);
+    expect(res.body.error).not.toMatch(/Invalid request body/i);
+  });
 });
 
 describe('Project + workspace API', () => {

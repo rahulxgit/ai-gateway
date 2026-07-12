@@ -42,7 +42,7 @@ export const env = {
   rateLimitWindowMs: optionalNumber('RATE_LIMIT_WINDOW_MS', 60_000),
   rateLimitMax: optionalNumber('RATE_LIMIT_MAX', 60),
 
-  maxPromptLength: optionalNumber('MAX_PROMPT_LENGTH', 32_000),
+  maxPromptLength: optionalNumber('MAX_PROMPT_LENGTH', 3_500_000),
   requestTimeoutMs: optionalNumber('REQUEST_TIMEOUT_MS', 30_000),
   maxRetries: optionalNumber('MAX_RETRIES', 2),
 

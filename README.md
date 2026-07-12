@@ -254,6 +254,13 @@ src/
 - **`503 No providers are configured`** — set at least one `*_API_KEY` in `.env`.
 - **`502 All providers failed`** — every configured provider rejected the
   request; check `/health` for per-provider error detail.
+- **`400 Invalid request body` on a large paste** — the request body has a
+  `MAX_PROMPT_LENGTH` cap (default 3.5M characters, ~875K tokens — enough
+  for roughly 50k+ lines of code). If you still hit this on something
+  larger, raise `MAX_PROMPT_LENGTH` in `.env`, but note the actual LLM call
+  will still fail over if it exceeds whichever provider's real context
+  window ends up handling it (Gemini 2.5 Flash-Lite's 1M-token window is
+  the largest configured here).
 - **SQLite locked errors under heavy load** — WAL mode is enabled by
   default, but very high concurrency may still want a move to Postgres
   (swap out `src/database/client.ts`).
