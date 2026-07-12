@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../types';
 import { RoutingChain } from './RoutingChain';
+import { CodeBlock } from './CodeBlock';
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
@@ -42,11 +43,32 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
                      prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5
                      prose-strong:text-ink prose-strong:font-semibold
                      prose-code:rounded prose-code:bg-panel-raised prose-code:px-1 prose-code:py-0.5 prose-code:text-[13px] prose-code:before:content-none prose-code:after:content-none
-                     prose-pre:bg-panel-raised prose-pre:border prose-pre:border-hairline
                      prose-a:text-signal prose-a:no-underline hover:prose-a:underline
                      prose-blockquote:border-l-signal-dim prose-blockquote:text-ink-muted"
         >
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({ className, children }) {
+                // Fenced code blocks get a "language-xxx" className from
+                // remark; plain inline `code` spans don't — use that to
+                // tell them apart since react-markdown v9 dropped the
+                // explicit `inline` prop.
+                if (!className) {
+                  return <code className={className}>{children}</code>;
+                }
+                return <CodeBlock className={className}>{children}</CodeBlock>;
+              },
+              pre({ children }) {
+                // CodeBlock renders its own <pre> with the copy-button
+                // header, so unwrap react-markdown's default <pre> to
+                // avoid double-wrapping.
+                return <>{children}</>;
+              },
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
         </div>
       </div>
       {message.provider && message.failoverChain && (
