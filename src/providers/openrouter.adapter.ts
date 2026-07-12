@@ -12,10 +12,9 @@ export class OpenRouterAdapter extends OpenAICompatibleAdapter {
         'HTTP-Referer': 'https://github.com/ai-gateway',
         'X-Title': 'AI Gateway',
       },
-      // Not individually verified — OpenRouter proxies to whichever backend
-      // is currently serving this model, and their real ceilings vary.
-      // Kept conservative. Raise if you confirm a higher limit.
-      maxOutputTokens: 8192,
+      // Verified against OpenRouter's own model page for this exact model:
+      // 131,072 token context window, 16,384 max output tokens.
+      maxOutputTokens: 16384,
     });
   }
 }

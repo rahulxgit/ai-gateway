@@ -27,9 +27,11 @@ export class HuggingFaceAdapter implements ProviderAdapter {
   // The default model here is text-only; HF's router doesn't reliably
   // expose a vision-capable chat model in this slot.
   readonly supportsVision = false;
-  // Not individually verified against HF's router for this specific model —
-  // kept conservative rather than risking a hard failure on an over-limit
-  // request. Raise this if you confirm a higher real ceiling.
+  // HF's router dynamically proxies each request to whichever backend
+  // provider (Cerebras, Together, Fireworks, etc.) is currently serving
+  // this model — there's no single fixed ceiling to verify against, since
+  // it depends on which provider actually handles a given request. Kept
+  // conservative rather than guessing.
   readonly maxOutputTokens = 8192;
 
   isConfigured(): boolean {

@@ -58,3 +58,30 @@ describe('OpenAICompatibleAdapter max token clamping', () => {
     expect(sentBody.max_tokens).toBe(8000);
   });
 });
+
+describe('per-provider maxOutputTokens configuration', () => {
+  // These lock in the researched values so a future edit can't silently
+  // regress them back to an unverified guess. See each adapter file for
+  // the source of each number.
+  it('matches verified/estimated real ceilings for every provider', () => {
+    const expected: Record<string, number> = {
+      gemini: 65536, // verified: Google docs
+      anthropic: 64000, // verified: Anthropic docs
+      openai: 128000, // verified: OpenAI docs (whole GPT-5 family)
+      groq: 32768, // verified: Groq docs
+      deepseek: 8000, // verified: DeepSeek docs
+      cerebras: 40960, // verified: Cerebras model config
+      openrouter: 16384, // verified: OpenRouter model page
+      together: 64000, // context-bound estimate (no separate cap published)
+      mistral: 64000, // context-bound estimate (no separate cap published)
+      kimi: 8192, // conservative — unverified
+      huggingface: 8192, // conservative — router proxies dynamically, no fixed ceiling exists
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { providerRegistry } = require('../providers/registry');
+    for (const [name, ceiling] of Object.entries(expected)) {
+      expect(providerRegistry[name].maxOutputTokens).toBe(ceiling);
+    }
+  });
+});

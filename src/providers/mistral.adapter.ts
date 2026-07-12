@@ -12,9 +12,11 @@ export class MistralAdapter extends OpenAICompatibleAdapter {
       baseUrl: 'https://api.mistral.ai/v1',
       apiKey: env.mistralApiKey,
       defaultModel: 'mistral-small-latest',
-      // Not individually verified against Mistral's real ceiling for this
-      // model — kept conservative. Raise if you confirm a higher limit.
-      maxOutputTokens: 8192,
+      // Mistral doesn't publish a separate output cap for Small 4 — docs
+      // state input+output share the 256K context budget with no distinct
+      // lower output ceiling found. 64000 leaves ample room within that
+      // shared budget alongside a typical prompt.
+      maxOutputTokens: 64000,
     });
   }
 }

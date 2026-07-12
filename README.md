@@ -107,12 +107,17 @@ provider's own docs):
 
 | Provider | Max output tokens | Verified? |
 |---|---|---|
-| Gemini (2.5 Flash-Lite) | 65,536 | ✅ |
-| OpenAI (gpt-5-nano) | 128,000 | ✅ |
-| Anthropic (Haiku 4.5) | 64,000 | ✅ |
-| Groq (llama-3.3-70b-versatile) | 32,768 | ✅ |
-| DeepSeek (deepseek-chat) | 8,000 | ✅ |
-| Together, OpenRouter, Hugging Face, Cerebras, Mistral, Kimi | 8,192 | ⚠️ conservative estimate, not individually verified |
+| OpenAI (gpt-5-nano) | 128,000 | ✅ verified — OpenAI docs |
+| Gemini (2.5 Flash-Lite) | 65,536 | ✅ verified — Google docs |
+| Anthropic (Haiku 4.5) | 64,000 | ✅ verified — Anthropic docs |
+| Together (Llama-3.3-70B-Instruct-Turbo) | 64,000 | ⚠️ no separate cap published; context-bound estimate (131K context, one listing shows "unlimited" output) |
+| Mistral (Small 4) | 64,000 | ⚠️ no separate cap published; context-bound estimate (256K shared input+output budget) |
+| Cerebras (gpt-oss-120b) | 40,960 | ✅ verified — Cerebras model config |
+| Groq (llama-3.3-70b-versatile) | 32,768 | ✅ verified — Groq docs |
+| OpenRouter (llama-3.3-70b-instruct) | 16,384 | ✅ verified — OpenRouter model page |
+| DeepSeek (deepseek-chat) | 8,000 | ✅ verified — DeepSeek docs |
+| Hugging Face | 8,192 | ⚠️ genuinely unverifiable — HF's router dynamically proxies to a different backend per request, so there's no single fixed ceiling to check |
+| Kimi (k2.6) | 8,192 | ⚠️ conservative estimate, not individually verified |
 
 If you confirm a higher real ceiling for any of the unverified ones, update
 `maxOutputTokens` in that adapter's constructor (`src/providers/*.adapter.ts`).
