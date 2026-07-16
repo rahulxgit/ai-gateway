@@ -49,7 +49,7 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   together: 0.0002,
   openrouter: 0.001,
   huggingface: 0.0001,
-  deepseek: 0.0002,
+  deepseek: 0.00021, // v4-flash: $0.14/$0.28 per 1M blended
   kimi: 0.0018,
   cerebras: 0.0001,
   mistral: 0.0004,

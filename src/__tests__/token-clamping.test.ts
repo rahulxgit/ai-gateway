@@ -69,7 +69,7 @@ describe('per-provider maxOutputTokens configuration', () => {
       anthropic: 64000, // verified: Anthropic docs
       openai: 128000, // verified: OpenAI docs (whole GPT-5 family)
       groq: 32768, // verified: Groq docs
-      deepseek: 8000, // verified: DeepSeek docs
+      deepseek: 384000, // verified: DeepSeek docs (v4-flash)
       cerebras: 40960, // verified: Cerebras model config
       openrouter: 16384, // verified: OpenRouter model page
       together: 64000, // context-bound estimate (no separate cap published)

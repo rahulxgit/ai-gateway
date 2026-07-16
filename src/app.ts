@@ -13,7 +13,12 @@ export function createApp() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: env.corsOrigin }));
+  // CORS_ORIGIN accepts a comma-separated list, e.g.
+  // "https://a.vercel.app,https://b.vercel.app" — so this gateway can serve
+  // multiple frontends without falling back to "*". A single "*" or one
+  // origin still works exactly as before.
+  const corsOrigins = env.corsOrigin.split(',').map((o) => o.trim()).filter(Boolean);
+  app.use(cors({ origin: corsOrigins.length > 1 ? corsOrigins : corsOrigins[0] ?? '*' }));
   // Base64-encoded images in chat requests can be large (a single 15MB
   // image is ~20MB as base64); 2mb was fine for text-only payloads but
   // would reject every image-bearing request.
