@@ -33,6 +33,11 @@ export interface ChatMessage {
   failoverChain?: ProviderName[];
   createdAt?: string;
   images?: ImageAttachment[];
+  // Names of text-extracted files (PDF/DOCX/txt) attached to this message,
+  // for display purposes only — the extracted text itself lives inside
+  // `content` (sent to the model) but is never shown raw in the UI, same
+  // as how Claude.ai/ChatGPT show a clean file chip instead of a text dump.
+  attachmentNames?: string[];
 }
 
 export interface ChatResult {

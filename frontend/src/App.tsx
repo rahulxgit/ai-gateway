@@ -63,9 +63,12 @@ export default function App() {
     refreshSessions();
   };
 
-  const send = async (text: string, images?: ImageAttachment[]) => {
+  const send = async (apiText: string, displayText: string, images?: ImageAttachment[], attachmentNames?: string[]) => {
     setError(null);
-    const userMessage: ChatMessage = { role: 'user', content: text, images };
+    // Store the clean, user-typed text for display — the full extracted
+    // file dump (apiText) only ever goes to the backend/model, never
+    // rendered in the chat bubble.
+    const userMessage: ChatMessage = { role: 'user', content: displayText, images, attachmentNames };
     setMessages((prev) => [...prev, userMessage]);
     setSending(true);
 
@@ -73,7 +76,7 @@ export default function App() {
       const result = await api.sendChat({
         sessionId: activeSessionId ?? undefined,
         projectId: activeProject?.projectId,
-        messages: [{ role: 'user', content: text, images }],
+        messages: [{ role: 'user', content: apiText, images }],
         taskType,
         forceProvider: forceProvider === 'auto' ? undefined : forceProvider,
         model: modelOverride || undefined,

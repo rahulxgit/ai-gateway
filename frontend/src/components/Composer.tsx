@@ -17,7 +17,16 @@ export function Composer({
   disabled,
   projectId,
 }: {
-  onSend: (text: string, images?: ImageAttachment[]) => void;
+  // apiText: full content sent to the model (includes dumped file text).
+  // displayText: what the user actually typed, shown in the chat bubble —
+  // never the raw extracted dump, matching Claude.ai/ChatGPT's behavior.
+  // attachmentNames: text-file names, rendered as clean chips instead.
+  onSend: (
+    apiText: string,
+    displayText: string,
+    images?: ImageAttachment[],
+    attachmentNames?: string[]
+  ) => void;
   disabled: boolean;
   projectId?: string;
 }) {
@@ -58,25 +67,33 @@ export function Composer({
     if ((!text && readyAttachments.length === 0) || disabled) return;
 
     // Text-extractable files (PDF/DOCX/plain text) get prepended as
-    // clearly-delimited context ahead of the user's message — the backend
-    // treats this as one user turn either way. Images are handled
-    // completely differently: they travel as real image data on the
-    // message so a vision-capable provider actually sees the picture,
-    // not a text description of it.
+    // clearly-delimited context ahead of the user's message for the API
+    // call only — the chat bubble never shows this raw dump, just a file
+    // chip, same as Claude.ai/ChatGPT. Images travel as real image data
+    // so a vision-capable provider actually sees the picture.
     const textAttachments = readyAttachments.filter((a) => a.result!.kind === 'text');
     const imageAttachments = readyAttachments.filter((a) => a.result!.kind === 'image');
 
     const attachmentBlocks = textAttachments
       .map((a) => `--- Attached file: ${a.result!.filename} ---\n${a.result!.extractedText}\n--- end of attachment ---`)
       .join('\n\n');
-    const finalText = attachmentBlocks ? `${attachmentBlocks}\n\n${text}`.trim() : text;
+    const apiText = attachmentBlocks ? `${attachmentBlocks}\n\n${text}`.trim() : text;
+    // Fallback text only used when there's truly nothing else to send to
+    // the model (backend requires non-empty content) — never shown in the UI.
+    const apiTextOrFallback = apiText || 'What is in this image?';
 
     const images: ImageAttachment[] = imageAttachments.map((a) => ({
       mimeType: a.result!.mimeType,
       base64: a.result!.base64!,
     }));
+    const attachmentNames = textAttachments.map((a) => a.result!.filename);
 
-    onSend(finalText || 'What is in this image?', images.length > 0 ? images : undefined);
+    onSend(
+      apiTextOrFallback,
+      text,
+      images.length > 0 ? images : undefined,
+      attachmentNames.length > 0 ? attachmentNames : undefined
+    );
     setValue('');
     setAttachments([]);
     requestAnimationFrame(() => {

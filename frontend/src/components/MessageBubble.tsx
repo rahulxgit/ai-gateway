@@ -23,6 +23,27 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
               ))}
             </div>
           )}
+          {message.attachmentNames && message.attachmentNames.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {message.attachmentNames.map((name, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-1.5 rounded-md border border-hairline bg-panel-raised px-2.5 py-1.5 font-mono text-[11px] text-ink-muted"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span className="max-w-[180px] truncate">{name}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {message.content && (
             <div className="rounded-2xl rounded-br-sm bg-panel-raised px-4 py-2.5 text-[15px] leading-relaxed text-ink whitespace-pre-wrap break-words">
               {message.content}
