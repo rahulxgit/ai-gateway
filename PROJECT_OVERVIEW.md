@@ -123,9 +123,11 @@ env vars first — this bit us once with `MAX_PROMPT_LENGTH`.
 ## Frontend features map
 
 - **Sidebar**: session list, mobile slide-over drawer
-- **Composer**: text + file attach (PDF/DOCX/text → extracted as context;
-  images → real base64 sent to vision providers) + copy-code buttons on
-  fenced code blocks in responses
+- **Composer**: text + file attach. PDF/DOCX/text files get extracted and
+  sent to the model as context, but the chat bubble shows a clean filename
+  chip — never the raw extracted text — same as Claude.ai/ChatGPT. Images →
+  real base64 sent to vision providers, shown as thumbnails. Plus
+  copy-code buttons on fenced code blocks in responses.
 - **RoutingControls**: task type dropdown, provider force dropdown, and
   (only when `provider: openrouter` selected) a free-model picker
 - **RoutingChain**: visualizes the actual failover chain per response
