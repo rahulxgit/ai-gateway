@@ -15,6 +15,16 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'openrouter',
   'openai',
   'huggingface',
+  'cloudflare',
+  'fireworks',
+  'inference',
+  'nebius',
+  'sambanova',
+  'nvidia',
+  'novita',
+  'baseten',
+  'modelscope',
+  'aimlapi',
 ];
 
 // Task-based routing preferences. The router tries these providers first,
@@ -53,6 +63,16 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   kimi: 0.0018,
   cerebras: 0.0001,
   mistral: 0.0004,
+  cloudflare: 0.0001,
+  fireworks: 0.0002,
+  inference: 0.0001,
+  nebius: 0.0001,
+  sambanova: 0.0001,
+  nvidia: 0.0001,
+  novita: 0.0001,
+  baseten: 0.0001,
+  modelscope: 0.0001,
+  aimlapi: 0.0001,
 };
 
 export function buildProviderOrder(

@@ -448,3 +448,30 @@ src/
 ## License
 
 MIT — use freely, including as a portfolio project.
+### Using the New Free-Tier Providers
+
+The gateway now supports 10 new free or free-tier providers that you can configure in your `.env` file:
+
+- **Cloudflare AI**: Requires `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`.
+- **Fireworks AI**: Requires `FIREWORKS_API_KEY`.
+- **Inference.net**: Requires `INFERENCE_API_KEY`.
+- **Nebius AI Studio**: Requires `NEBIUS_API_KEY`.
+- **SambaNova Cloud**: Requires `SAMBANOVA_API_KEY`.
+- **NVIDIA NIM**: Requires `NVIDIA_API_KEY`.
+- **Novita AI**: Requires `NOVITA_API_KEY`.
+- **Baseten**: Requires `BASETEN_API_KEY`.
+- **ModelScope API**: Requires `MODELSCOPE_API_KEY`.
+- **AI/ML API**: Requires `AIML_API_KEY`.
+
+**Example: Forcing a new provider**
+
+To explicitly route a request to one of the new providers (e.g., SambaNova), use the `forceProvider` field:
+
+```json
+{
+  "messages": [{ "role": "user", "content": "Write a python script to reverse a string" }],
+  "forceProvider": "sambanova"
+}
+```
+
+These providers are also fully integrated into the task-based routing failover system (`general`, `coding`, `reasoning`, etc.).

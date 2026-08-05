@@ -31,7 +31,7 @@ describe('GET /health', () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
-    expect(res.body.providers.length).toBe(11);
+    expect(res.body.providers.length).toBe(21);
   });
 });
 

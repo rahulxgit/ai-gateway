@@ -73,7 +73,17 @@ describe('per-provider maxOutputTokens configuration', () => {
       cerebras: 40960, // verified: Cerebras model config
       openrouter: 16384, // verified: OpenRouter model page
       together: 64000, // context-bound estimate (no separate cap published)
-      mistral: 64000, // context-bound estimate (no separate cap published)
+      mistral: 64000,
+    cloudflare: 8192,
+    fireworks: 8192,
+    inference: 8192,
+    nebius: 8192,
+    sambanova: 8192,
+    nvidia: 8192,
+    novita: 8192,
+    baseten: 8192,
+    modelscope: 8192,
+    aimlapi: 8192, // context-bound estimate (no separate cap published)
       kimi: 8192, // conservative — unverified
       huggingface: 8192, // conservative — router proxies dynamically, no fixed ceiling exists
     };
