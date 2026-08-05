@@ -132,6 +132,181 @@ Task-based routing (`taskType: "coding"`, `"reasoning"`, etc.) automatically
 prefers whichever provider tends to perform best for that kind of work —
 see `src/config/routing.ts` to adjust the priority order.
 
+
+## How to use this AI Gateway like an API in your own projects
+
+You can use this gateway exactly the same way you use official APIs from OpenAI or Anthropic in your code. By pointing your API base URL to this gateway, you get automatic failover and routing without changing your core application logic.
+
+- **Base URL**: `https://ai-gateway-wx35.onrender.com`
+- **Auth**: There is currently no authentication required. The endpoint is completely open.
+- **Warning**: This is perfectly fine for personal scripts, local development, or quick experiments. However, it is **unsafe for public production use** unless you add an API key authentication layer, as anyone could consume your configured provider quotas.
+
+### Practical Code Examples
+
+#### cURL
+```bash
+curl -X POST https://ai-gateway-wx35.onrender.com/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {
+        "role": "user",
+        "content": "Write a short poem about a server that never goes down."
+      }
+    ],
+    "taskType": "creative"
+  }'
+```
+
+#### Python (using `requests`)
+This pattern is similar to how the existing `job_search.py` script utilizes the gateway for robust multi-step reasoning.
+```python
+import requests
+
+API_BASE = "https://ai-gateway-wx35.onrender.com"
+
+def generate_text(prompt):
+    payload = {
+        "messages": [{"role": "user", "content": prompt}],
+        "taskType": "coding" # Optional: hints the router to pick the best model for the task
+    }
+
+    response = requests.post(f"{API_BASE}/chat", json=payload)
+    response.raise_for_status()
+
+    data = response.json()
+    return data['message']['content']
+
+# Example usage
+print(generate_text("Explain the difference between threading and multiprocessing in Python."))
+```
+
+#### Node.js (using `fetch`)
+```javascript
+const API_BASE = "https://ai-gateway-wx35.onrender.com";
+
+async function chatWithGateway(userMessage) {
+  const response = await fetch(`${API_BASE}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: userMessage }],
+      taskType: 'reasoning'
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gateway error: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log("Response:", data.message.content);
+  console.log("Providers tried:", data.metadata.chain); // See the failover chain!
+}
+
+chatWithGateway("What are the architectural benefits of the actor model?");
+```
+
+### Feature Examples
+
+#### Basic Chat Request
+```json
+{
+  "messages": [{ "role": "user", "content": "Hello, world!" }]
+}
+```
+
+#### Forcing a Provider
+Bypass automatic routing and strictly use a specific provider.
+```json
+{
+  "messages": [{ "role": "user", "content": "I specifically want Claude's opinion." }],
+  "forceProvider": "anthropic"
+}
+```
+
+#### Selecting a Free OpenRouter Model Explicitly
+Leverage zero-cost models available via OpenRouter.
+```json
+{
+  "messages": [{ "role": "user", "content": "Help me refactor this code..." }],
+  "forceProvider": "openrouter",
+  "model": "deepseek/deepseek-chat-v3.1:free"
+}
+```
+
+#### Multi-turn Conversation
+Pass a `sessionId` to append to an existing conversation stored in the gateway's SQLite database.
+```json
+{
+  "sessionId": "a1b2c3d4-e5f6-7890",
+  "messages": [{ "role": "user", "content": "Can you explain that last point in more detail?" }]
+}
+```
+
+#### Attaching an Image (Vision Request)
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is in this image?",
+      "image": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD..."
+    }
+  ]
+}
+```
+
+#### Response Controls
+Adjust generation parameters.
+```json
+{
+  "messages": [{ "role": "user", "content": "Write 5 unusual names for a pet cat." }],
+  "temperature": 0.9,
+  "maxTokens": 200
+}
+```
+
+#### Full Sample Response JSON
+The gateway returns not just the answer, but metadata about how it arrived there (the failover chain, timing, and cost).
+```json
+{
+  "message": {
+    "role": "assistant",
+    "content": "1. Sir Pounce-a-lot\n2. Chairman Meow\n3. Purr-lock Holmes\n4. Cat-rick Swayze\n5. The Great Catsby"
+  },
+  "metadata": {
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile",
+    "latencyMs": 850,
+    "cost": 0.00015,
+    "chain": [
+      {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "error": "Rate limit exceeded",
+        "latencyMs": 200
+      },
+      {
+        "provider": "groq",
+        "model": "llama-3.3-70b-versatile",
+        "latencyMs": 850
+      }
+    ]
+  }
+}
+```
+
+### Other Useful Endpoints
+- `GET /health` - Check the latency and status of all configured providers.
+- `GET /providers` - List which AI providers are currently active in your gateway.
+- `GET /analytics` - View token usage, request counts, and failover statistics.
+- `POST /uploads` - Upload a document (PDF, DOCX, TXT) to extract text for use in your prompts.
+- `GET /projects` - List active persistent workspaces (projects).
+
+
 ## API
 
 | Method | Route | Purpose |
