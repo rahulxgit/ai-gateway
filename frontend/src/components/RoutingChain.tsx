@@ -12,6 +12,16 @@ const LABELS: Record<ProviderName, string> = {
   kimi: 'kimi',
   cerebras: 'cerebras',
   mistral: 'mistral',
+  cloudflare: 'cloudflare',
+  fireworks: 'fireworks',
+  inference: 'inference',
+  nebius: 'nebius',
+  sambanova: 'sambanova',
+  nvidia: 'nvidia',
+  novita: 'novita',
+  baseten: 'baseten',
+  modelscope: 'modelscope',
+  aimlapi: 'aimlapi',
 };
 
 /**
