@@ -10,6 +10,16 @@ import { DeepSeekAdapter } from './deepseek.adapter';
 import { KimiAdapter } from './kimi.adapter';
 import { CerebrasAdapter } from './cerebras.adapter';
 import { MistralAdapter } from './mistral.adapter';
+import { CloudflareAdapter } from './cloudflare.adapter';
+import { FireworksAdapter } from './fireworks.adapter';
+import { InferenceAdapter } from './inference.adapter';
+import { NebiusAdapter } from './nebius.adapter';
+import { SambaNovaAdapter } from './sambanova.adapter';
+import { NvidiaAdapter } from './nvidia.adapter';
+import { NovitaAdapter } from './novita.adapter';
+import { BasetenAdapter } from './baseten.adapter';
+import { ModelScopeAdapter } from './modelscope.adapter';
+import { AimlapiAdapter } from './aimlapi.adapter';
 
 // Single source of truth for every provider instance. To add a new
 // provider: write an adapter implementing ProviderAdapter, instantiate it
@@ -27,6 +37,16 @@ export const providerRegistry: Record<ProviderName, ProviderAdapter> = {
   kimi: new KimiAdapter(),
   cerebras: new CerebrasAdapter(),
   mistral: new MistralAdapter(),
+  cloudflare: new CloudflareAdapter(),
+  fireworks: new FireworksAdapter(),
+  inference: new InferenceAdapter(),
+  nebius: new NebiusAdapter(),
+  sambanova: new SambaNovaAdapter(),
+  nvidia: new NvidiaAdapter(),
+  novita: new NovitaAdapter(),
+  baseten: new BasetenAdapter(),
+  modelscope: new ModelScopeAdapter(),
+  aimlapi: new AimlapiAdapter(),
 };
 
 export function getProvider(name: ProviderName): ProviderAdapter {

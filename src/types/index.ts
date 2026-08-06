@@ -14,7 +14,17 @@ export type ProviderName =
   | 'deepseek'
   | 'kimi'
   | 'cerebras'
-  | 'mistral';
+  | 'mistral'
+  | 'cloudflare'
+  | 'fireworks'
+  | 'inference'
+  | 'nebius'
+  | 'sambanova'
+  | 'nvidia'
+  | 'novita'
+  | 'baseten'
+  | 'modelscope'
+  | 'aimlapi';
 
 export type TaskType =
   | 'coding'

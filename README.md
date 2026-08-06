@@ -76,10 +76,12 @@ reports the rest as unavailable via `/health` and `/providers`.
 
 ### Providers
 
-Eleven providers are supported, all behind the same `ProviderAdapter`
+Twenty-one providers are supported, all behind the same `ProviderAdapter`
 interface: Gemini, Anthropic, OpenAI, Groq, Together AI, OpenRouter,
-Hugging Face, DeepSeek, Kimi (Moonshot AI), Cerebras, and Mistral. A few
-notes on cost, since "free" means different things across them:
+Hugging Face, DeepSeek, Kimi (Moonshot AI), Cerebras, Mistral, Cloudflare
+Workers AI, Fireworks AI, Inference.net, Nebius AI Studio, SambaNova Cloud,
+NVIDIA NIM, Novita AI, Baseten, ModelScope, and AI/ML API. A few notes on
+cost, since "free" means different things across them:
 
 - **Gemini, Groq, Together, Hugging Face, OpenRouter, Cerebras, Mistral** —
   genuinely free tiers with no card required (limits and reliability vary;
@@ -97,6 +99,51 @@ notes on cost, since "free" means different things across them:
   `deepseek/deepseek-chat-v3.1:free` or `moonshotai/kimi-k2:free`. Pass
   `forceProvider: "openrouter"` with `model: "deepseek/deepseek-chat-v3.1:free"`
   in a `/chat` request to use them at no cost.
+
+### Newly added free / free-tier providers
+
+All ten of these are OpenAI-compatible under the hood, so they reuse the
+same `OpenAICompatibleAdapter` base class as Groq/Together/OpenRouter —
+each adapter file (`src/providers/<name>.adapter.ts`) is just a base URL,
+API key, and default model.
+
+| Provider | Env var(s) | Default model used here | Sign up |
+|---|---|---|---|
+| Cloudflare Workers AI | `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` (both required) | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | dash.cloudflare.com |
+| Fireworks AI | `FIREWORKS_API_KEY` | `accounts/fireworks/models/llama-v3p3-70b-instruct` | fireworks.ai |
+| Inference.net | `INFERENCE_API_KEY` | `meta-llama/llama-3.3-70b-instruct/fp-8` | inference.net |
+| Nebius AI Studio | `NEBIUS_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct` | studio.nebius.com |
+| SambaNova Cloud | `SAMBANOVA_API_KEY` | `Meta-Llama-3.3-70B-Instruct` | cloud.sambanova.ai |
+| NVIDIA NIM | `NVIDIA_API_KEY` | `meta/llama-3.3-70b-instruct` | build.nvidia.com |
+| Novita AI | `NOVITA_API_KEY` | `meta-llama/llama-3.3-70b-instruct` | novita.ai |
+| Baseten | `BASETEN_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct` | baseten.co |
+| ModelScope | `MODELSCOPE_API_KEY` | `Qwen/Qwen2.5-72B-Instruct` | modelscope.cn |
+| AI/ML API | `AIMLAPI_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct-Turbo` | aimlapi.com |
+
+They're wired into the gateway exactly like every other provider: appended
+to `providerRegistry` in `src/providers/registry.ts` and to the end of
+`DEFAULT_FAILOVER_ORDER` in `src/config/routing.ts` — so nothing about
+existing routing, task preferences, or the failover order for the original
+eleven providers changes. To use one, set its env var(s) and either let it
+be picked up in the default chain or force it directly:
+
+```json
+{
+  "messages": [{ "role": "user", "content": "Hello from a new provider!" }],
+  "forceProvider": "fireworks"
+}
+```
+
+Cloudflare is the one exception worth calling out: it needs **both**
+`CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` set, since the endpoint URL
+itself is scoped to your Cloudflare account
+(`/client/v4/accounts/{account_id}/ai/v1`). If either is missing, the
+adapter reports itself as unconfigured and the router skips it cleanly,
+same as any provider with a missing key.
+
+Model IDs above are the free-tier defaults used out of the box; override
+per-request with the `model` field, or edit `defaultModel` in the relevant
+adapter file to change the default permanently.
 
 ### Max output tokens per provider
 
