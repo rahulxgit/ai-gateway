@@ -162,18 +162,18 @@ provider's own docs):
 | Cerebras (gpt-oss-120b) | 40,960 | ✅ verified — Cerebras model config |
 | Groq (llama-3.3-70b-versatile) | 32,768 | ✅ verified — Groq docs |
 | OpenRouter (llama-3.3-70b-instruct) | 16,384 | ✅ verified — OpenRouter model page |
-| DeepSeek (deepseek-chat) | 8,000 | ✅ verified — DeepSeek docs |
+| DeepSeek (deepseek-v4-flash) | 384,000 | ✅ verified — DeepSeek docs |
 | Hugging Face | 8,192 | ⚠️ genuinely unverifiable — HF's router dynamically proxies to a different backend per request, so there's no single fixed ceiling to check |
 | Kimi (k2.6) | 8,192 | ⚠️ conservative estimate, not individually verified |
 
 If you confirm a higher real ceiling for any of the unverified ones, update
 `maxOutputTokens` in that adapter's constructor (`src/providers/*.adapter.ts`).
 
-**Time-sensitive:** DeepSeek's `deepseek-chat` model ID is scheduled for
-deprecation on **2026-07-24**. It currently works (aliased internally to
-`deepseek-v4-flash`), but will stop accepting that exact model string after
-the deadline — migrate to `deepseek-v4-flash` in `src/providers/deepseek.adapter.ts`
-before then.
+**Migration complete:** DeepSeek's old `deepseek-chat` model ID reached its
+deprecation deadline on **2026-07-24** and has been fully replaced with
+`deepseek-v4-flash` in `src/providers/deepseek.adapter.ts` (also a real
+upgrade: max output rose from 8,000 to 384,000 tokens). No action needed
+unless DeepSeek announces a further migration.
 
 Task-based routing (`taskType: "coding"`, `"reasoning"`, etc.) automatically
 prefers whichever provider tends to perform best for that kind of work —
