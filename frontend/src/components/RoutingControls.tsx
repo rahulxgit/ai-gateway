@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ALL_PROVIDERS, OPENROUTER_FREE_MODELS, TASK_TYPES } from '../types';
+import { OPENROUTER_FREE_MODELS, TASK_TYPES } from '../types';
 import type { ProviderName, TaskType } from '../types';
+import { ProviderPicker } from './ProviderPicker';
 
 export function RoutingControls({
   taskType,
@@ -34,10 +35,9 @@ export function RoutingControls({
         ))}
       </select>
 
-      <select
+      <ProviderPicker
         value={forceProvider}
-        onChange={(e) => {
-          const next = e.target.value as ProviderName | 'auto';
+        onChange={(next) => {
           onForceProviderChange(next);
           // Switching away from openrouter clears any free-model override —
           // that model ID is meaningless against a different provider.
@@ -46,15 +46,7 @@ export function RoutingControls({
             setCustomMode(false);
           }
         }}
-        className="rounded-md border border-hairline bg-panel-raised px-2 py-1 text-ink-muted outline-none transition hover:text-ink focus:border-signal-dim"
-      >
-        <option value="auto">provider: auto</option>
-        {ALL_PROVIDERS.map((p) => (
-          <option key={p} value={p}>
-            provider: {p}
-          </option>
-        ))}
-      </select>
+      />
 
       {forceProvider === 'openrouter' && (
         <div className="flex items-center gap-1.5">

@@ -76,6 +76,12 @@ export function recordAnalytics(input: {
 }
 
 export function getAnalyticsSummary() {
+  // All summary figures are a rolling 24-hour window, not lifetime totals.
+  // "Rolling" means it self-resets continuously: a request that happened
+  // 24 hours and 1 minute ago simply falls out of every query below on its
+  // own, with no cron job or manual reset step required.
+  const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
   const totals = db
     .prepare(
       `SELECT COUNT(*) as totalRequests,
@@ -83,20 +89,16 @@ export function getAnalyticsSummary() {
               COALESCE(SUM(estimated_cost_usd),0) as totalCostUsd,
               COALESCE(AVG(latency_ms),0) as avgLatencyMs,
               COALESCE(SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END),0) as successCount
-       FROM analytics`
+       FROM analytics
+       WHERE created_at >= ?`
     )
-    .get() as {
+    .get(windowStart) as {
     totalRequests: number;
     totalTokens: number;
     totalCostUsd: number;
     avgLatencyMs: number;
     successCount: number;
   };
-
-  const today = new Date().toISOString().slice(0, 10);
-  const daily = db
-    .prepare(`SELECT COUNT(*) as count FROM analytics WHERE created_at LIKE ?`)
-    .get(`${today}%`) as { count: number };
 
   const byProvider = db
     .prepare(
@@ -106,23 +108,28 @@ export function getAnalyticsSummary() {
               COALESCE(SUM(estimated_cost_usd),0) as costUsd,
               COALESCE(AVG(latency_ms),0) as avgLatencyMs,
               COALESCE(SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END),0) * 1.0 / COUNT(*) as successRate
-       FROM analytics GROUP BY provider ORDER BY requests DESC`
+       FROM analytics WHERE created_at >= ? GROUP BY provider ORDER BY requests DESC`
     )
-    .all();
+    .all(windowStart);
 
   const failovers = db
-    .prepare(`SELECT COUNT(*) as count FROM analytics WHERE failover_from IS NOT NULL`)
-    .get() as { count: number };
+    .prepare(`SELECT COUNT(*) as count FROM analytics WHERE failover_from IS NOT NULL AND created_at >= ?`)
+    .get(windowStart) as { count: number };
 
   return {
     totalRequests: totals.totalRequests,
-    dailyRequests: daily.count,
+    // Kept for API backward-compatibility with older frontend builds —
+    // now equal to totalRequests since the whole summary is already
+    // scoped to the trailing 24h window rather than lifetime.
+    dailyRequests: totals.totalRequests,
     totalTokens: totals.totalTokens,
     estimatedTotalCostUsd: Number(totals.totalCostUsd.toFixed(4)),
     avgLatencyMs: Math.round(totals.avgLatencyMs),
     successRate: totals.totalRequests ? totals.successCount / totals.totalRequests : 1,
     failoverEvents: failovers.count,
     byProvider,
+    windowHours: 24,
+    windowStart,
   };
 }
 
