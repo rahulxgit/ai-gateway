@@ -9,7 +9,17 @@ export type ProviderName =
   | 'deepseek'
   | 'kimi'
   | 'cerebras'
-  | 'mistral';
+  | 'mistral'
+  | 'cloudflare'
+  | 'fireworks'
+  | 'inference'
+  | 'nebius'
+  | 'sambanova'
+  | 'nvidia'
+  | 'novita'
+  | 'baseten'
+  | 'modelscope'
+  | 'aimlapi';
 
 export type TaskType =
   | 'coding'
@@ -97,6 +107,16 @@ export const ALL_PROVIDERS: ProviderName[] = [
   'kimi',
   'cerebras',
   'mistral',
+  'cloudflare',
+  'fireworks',
+  'inference',
+  'nebius',
+  'sambanova',
+  'nvidia',
+  'novita',
+  'baseten',
+  'modelscope',
+  'aimlapi',
 ];
 
 export const TASK_TYPES: { value: TaskType; label: string }[] = [

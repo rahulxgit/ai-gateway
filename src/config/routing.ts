@@ -15,6 +15,20 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'openrouter',
   'openai',
   'huggingface',
+  // Newly added free/free-tier providers. Appended at the end of the
+  // default chain (rather than interleaved) so existing routing behavior
+  // and task preferences for all previously-supported providers are
+  // completely unchanged; these only get tried after the original list.
+  'nebius',
+  'fireworks',
+  'sambanova',
+  'novita',
+  'nvidia',
+  'cloudflare',
+  'aimlapi',
+  'baseten',
+  'modelscope',
+  'inference',
 ];
 
 // Task-based routing preferences. The router tries these providers first,
@@ -53,6 +67,18 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   kimi: 0.0018,
   cerebras: 0.0001,
   mistral: 0.0004,
+  // New free/free-tier providers below — approximate blended figures for
+  // their listed free-tier default models, for relative cost tracking only.
+  cloudflare: 0.0, // Workers AI free daily neuron allocation
+  fireworks: 0.0002,
+  inference: 0.0001,
+  nebius: 0.0002,
+  sambanova: 0.0001,
+  nvidia: 0.0002,
+  novita: 0.0002,
+  baseten: 0.0002,
+  modelscope: 0.0001,
+  aimlapi: 0.0002,
 };
 
 export function buildProviderOrder(

@@ -9,7 +9,7 @@
 
 ## What this is
 
-A multi-LLM chat gateway: one API/UI in front of 11 providers, with
+A multi-LLM chat gateway: one API/UI in front of 21 providers, with
 automatic failover, persistent project memory, file/image upload, and a
 React dashboard. Backend on Render, frontend on Vercel.
 
@@ -61,7 +61,7 @@ frontend/src/
 
 ---
 
-## Providers (11) — current models & real max-output ceilings
+## Providers (21) — current models & real max-output ceilings
 
 | Provider | Model | Max output | Verified? | Vision? |
 |---|---|---|---|---|
@@ -76,6 +76,16 @@ frontend/src/
 | OpenRouter | `meta-llama/llama-3.3-70b-instruct` | 16,384 | ✅ | ❌ |
 | Hugging Face | `meta-llama/Llama-3.3-70B-Instruct` | 8,192 | ⚠️ router proxies dynamically, unverifiable | ❌ |
 | Kimi (Moonshot) | `kimi-k2.6` | 8,192 | ⚠️ conservative guess | ❌ |
+| Novita AI | `meta-llama/llama-3.3-70b-instruct` | 16,384 | ⚠️ conservative | ❌ |
+| Nebius AI Studio | `meta-llama/Llama-3.3-70B-Instruct` | 32,768 | ⚠️ conservative | ❌ |
+| Fireworks AI | `accounts/fireworks/models/llama-v3p3-70b-instruct` | 32,768 | ⚠️ conservative | ❌ |
+| Inference.net | `meta-llama/llama-3.3-70b-instruct/fp-8` | 8,192 | ⚠️ conservative | ❌ |
+| SambaNova Cloud | `Meta-Llama-3.3-70B-Instruct` | 8,192 | ⚠️ conservative | ❌ |
+| NVIDIA NIM | `meta/llama-3.3-70b-instruct` | 8,192 | ⚠️ conservative | ❌ |
+| Baseten | `meta-llama/Llama-3.3-70B-Instruct` | 8,192 | ⚠️ conservative | ❌ |
+| ModelScope | `Qwen/Qwen2.5-72B-Instruct` | 8,192 | ⚠️ conservative | ❌ |
+| AI/ML API | `meta-llama/Llama-3.3-70B-Instruct-Turbo` | 8,192 | ⚠️ conservative | ❌ |
+| Cloudflare Workers AI | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | 4,096 | ⚠️ free daily neuron budget, conservative | ❌ |
 
 **Every adapter clamps requested `maxTokens` to its own ceiling** (see
 `src/providers/openai-compatible.adapter.ts` `Math.min` pattern) — an
