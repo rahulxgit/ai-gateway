@@ -78,7 +78,7 @@ frontend/src/
 | Kimi (Moonshot) | `kimi-k2.6` | 8,192 | ⚠️ conservative guess | ❌ |
 | Novita AI | `meta-llama/llama-3.3-70b-instruct` | 16,384 | ⚠️ conservative | ❌ |
 | Nebius AI Studio | `meta-llama/Llama-3.3-70B-Instruct` | 32,768 | ⚠️ conservative | ❌ |
-| Fireworks AI | `accounts/fireworks/models/llama-v3p3-70b-instruct` | 32,768 | ⚠️ conservative | ❌ |
+| Fireworks AI | `accounts/fireworks/models/gpt-oss-120b` | 32,768 | ✅ verified live 2026-08-07 | ❌ |
 | Inference.net | `meta-llama/llama-3.3-70b-instruct/fp-8` | 8,192 | ⚠️ conservative | ❌ |
 | SambaNova Cloud | `Meta-Llama-3.3-70B-Instruct` | 8,192 | ⚠️ conservative | ❌ |
 | NVIDIA NIM | `meta/llama-3.3-70b-instruct` | 8,192 | ⚠️ conservative | ❌ |
@@ -107,11 +107,20 @@ selected).
 
 ## Known deprecation risk
 
-None currently outstanding — `deepseek-chat` → `deepseek-v4-flash`
-migration (completed, was due 2026-07-24) was the last one.
-`deepseek-v4-flash` defaults to "thinking mode" on (deepseek-chat didn't) —
-adapter doesn't yet send the `thinking: disabled` control param, so expect
-slightly higher latency/cost than the old baseline until that's added.
+- `deepseek-chat` → `deepseek-v4-flash` migration (completed, was due
+  2026-07-24). `deepseek-v4-flash` defaults to "thinking mode" on
+  (deepseek-chat didn't) — adapter doesn't yet send the `thinking:
+  disabled` control param, so expect slightly higher latency/cost than the
+  old baseline until that's added.
+- **Fireworks AI dropped the entire Llama 3.x line from its serverless
+  catalog** (confirmed live against a real account 2026-08-07 — `GET
+  /v1/models` returned zero matches for "llama"). Current Fireworks
+  catalog is GLM, Kimi, MiniMax, GPT-OSS, DeepSeek v4, Qwen3, and Nemotron.
+  Default switched from `llama-v3p3-70b-instruct` to `gpt-oss-120b` (same
+  model family already used as the Cerebras default, for consistency).
+  If Fireworks requests start 404ing again, re-run `GET
+  /v1/models` against the account key before assuming it's a code bug —
+  their catalog appears to churn fast.
 
 ---
 
@@ -168,9 +177,29 @@ env vars first — this bit us once with `MAX_PROMPT_LENGTH`.
    silently broken until switched to `gpt-oss-120b`.
 7. Gemini default model (`gemini-2.0-flash`) was deprecated March 2026 —
    same class of bug, switched to `gemini-2.5-flash-lite`.
+8. When 10 new providers (Cloudflare, Fireworks, Inference.net, Nebius,
+   SambaNova, NVIDIA, Novita, Baseten, ModelScope, AI/ML API) were added,
+   `chatRequestSchema.forceProvider` (a Zod enum in `src/middleware/index.ts`)
+   had its own hand-copied provider list that never got updated — every
+   request forcing one of the 10 new providers was rejected with a 400
+   before it ever reached the adapter, even with a fully working API key.
+   Fixed by deriving both `ProviderName` and the Zod enum from one
+   `PROVIDER_NAMES` const array (`src/types/index.ts`) instead of two
+   independent lists that could drift apart.
+9. `classifyError` (`src/providers/base.adapter.ts`) had no cases for HTTP
+   404 or 412, so both fell into a generic `UNKNOWN` error code. Discovered
+   live: Fireworks returns 412 for a billing-suspended account and a bare,
+   bodyless 404 once a model is gone from its catalog. Added
+   `ACCOUNT_SUSPENDED` (412) and `NOT_FOUND` (404) as their own codes so
+   this is diagnosable from Render logs / the health panel directly.
+10. Fireworks default model — see "Known deprecation risk" above.
 
-**Pattern**: most real bugs here were *stale/wrong model IDs* or
-*config defaults silently overridden elsewhere* — not logic errors. Check
+**Pattern**: most real bugs here were *stale/wrong model IDs*, *config
+defaults silently overridden elsewhere*, or *a value added in one place
+(registry/adapter/type) but not a second hand-copied list that validates or
+classifies against it* — rarely core logic errors. When adding a provider,
+grep for every other hardcoded provider list (request validation schemas,
+frontend label maps, error classifiers), not just the registry + type. Check
 these two categories first when something that "should" work doesn't.
 
 ---

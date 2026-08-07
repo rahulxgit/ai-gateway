@@ -110,7 +110,7 @@ API key, and default model.
 | Provider | Env var(s) | Default model used here | Sign up |
 |---|---|---|---|
 | Cloudflare Workers AI | `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` (both required) | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | dash.cloudflare.com |
-| Fireworks AI | `FIREWORKS_API_KEY` | `accounts/fireworks/models/llama-v3p3-70b-instruct` | fireworks.ai |
+| Fireworks AI | `FIREWORKS_API_KEY` | `accounts/fireworks/models/gpt-oss-120b` | fireworks.ai |
 | Inference.net | `INFERENCE_API_KEY` | `meta-llama/llama-3.3-70b-instruct/fp-8` | inference.net |
 | Nebius AI Studio | `NEBIUS_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct` | studio.nebius.com |
 | SambaNova Cloud | `SAMBANOVA_API_KEY` | `Meta-Llama-3.3-70B-Instruct` | cloud.sambanova.ai |
