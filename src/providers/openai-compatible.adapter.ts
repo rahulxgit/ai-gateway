@@ -1,6 +1,7 @@
 import axios from 'axios';
 import {
   ChatMessage,
+  ModelAvailabilityResult,
   ProviderAdapter,
   ProviderAdapterOptions,
   ProviderName,
@@ -181,6 +182,45 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       };
     } catch (err) {
       throw classifyError(this.name, err);
+    }
+  }
+
+  // Nearly every OpenAI-compatible provider exposes GET /v1/models listing
+  // every model id currently served. We use that as a lightweight canary:
+  // if our configured defaultModel isn't in the list, it's most likely been
+  // deprecated/renamed provider-side (this is exactly what happened when
+  // Groq pulled llama-4-scout-17b-16e-instruct without the gateway
+  // noticing until a live request 404'd in production).
+  async checkModelAvailability(): Promise<ModelAvailabilityResult> {
+    if (!this.isConfigured()) {
+      return { status: 'undetermined', model: this.defaultModel, detail: 'not configured' };
+    }
+    try {
+      const { data } = await axios.get(`${this.baseUrl}/models`, {
+        headers: this.headers(),
+        timeout: env.requestTimeoutMs,
+      });
+      const ids: unknown = data?.data ?? data?.models ?? data;
+      if (!Array.isArray(ids)) {
+        return { status: 'undetermined', model: this.defaultModel, detail: 'unexpected /models response shape' };
+      }
+      const modelIds = ids.map((m: unknown) =>
+        typeof m === 'string' ? m : (m as { id?: string })?.id
+      );
+      const found = modelIds.includes(this.defaultModel);
+      return {
+        status: found ? 'available' : 'unavailable',
+        model: this.defaultModel,
+        detail: found ? undefined : `not present in ${modelIds.length} models returned by ${this.baseUrl}/models`,
+      };
+    } catch (err) {
+      const detail = axios.isAxiosError(err)
+        ? `${err.response?.status ?? 'network error'}: ${err.message}`
+        : String(err);
+      // A failed check (auth error, no /models endpoint, timeout, etc.) is
+      // NOT evidence the model is gone — only report undetermined so we
+      // never cry wolf about a deprecation that isn't real.
+      return { status: 'undetermined', model: this.defaultModel, detail };
     }
   }
 }

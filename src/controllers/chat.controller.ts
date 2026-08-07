@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { orchestrateChat, orchestrateChatStream } from '../services/orchestrator.service';
 import { getHealthSnapshot } from '../services/health.service';
 import { listConfiguredProviders, listAllProviders } from '../providers/registry';
+import { validateConfiguredModels } from '../services/model-validation.service';
 import { logger } from '../utils/logger';
 
 export async function postChat(req: Request, res: Response) {
@@ -37,4 +38,15 @@ export function getProviders(_req: Request, res: Response) {
 
 export function getHealth(_req: Request, res: Response) {
   res.json({ status: 'ok', providers: getHealthSnapshot() });
+}
+
+// On-demand version of the startup model-deprecation check, so a
+// deprecation can be caught by hitting this endpoint (or a cron/uptime
+// pinger) instead of waiting for the next deploy/restart to notice.
+export async function getModelValidation(_req: Request, res: Response) {
+  const results = await validateConfiguredModels();
+  res.json({
+    status: results.some((r) => r.status === 'unavailable') ? 'warning' : 'ok',
+    results,
+  });
 }

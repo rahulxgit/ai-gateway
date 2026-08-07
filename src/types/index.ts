@@ -166,6 +166,21 @@ export interface ProviderAdapter {
     options: ProviderAdapterOptions,
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ProviderResponse>;
+  // Optional: query the provider's own model catalog (e.g. GET /models) and
+  // report whether this adapter's defaultModel is still live there. Not
+  // every provider exposes a models list endpoint, so this is optional —
+  // adapters that don't implement it are simply skipped by the startup
+  // validator rather than treated as broken. See model-validation.service.ts.
+  checkModelAvailability?(): Promise<ModelAvailabilityResult>;
+}
+
+export interface ModelAvailabilityResult {
+  // Undetermined means the check itself failed (network error, auth error,
+  // endpoint not supported at runtime) — NOT that the model is missing.
+  // Only 'unavailable' should be treated as an actionable deprecation signal.
+  status: 'available' | 'unavailable' | 'undetermined';
+  model: string;
+  detail?: string;
 }
 
 export interface ChatSession {
