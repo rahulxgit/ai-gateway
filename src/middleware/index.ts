@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { PROVIDER_NAMES } from '../types';
 
 export const apiRateLimiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
@@ -33,7 +34,11 @@ export const chatRequestSchema = z.object({
     .enum(['coding', 'reasoning', 'creative', 'fast', 'cheap', 'large-context', 'general'])
     .optional(),
   forceProvider: z
-    .enum(['gemini', 'anthropic', 'openai', 'groq', 'together', 'openrouter', 'huggingface', 'deepseek', 'kimi', 'cerebras', 'mistral'])
+    // Derived from PROVIDER_NAMES (src/types/index.ts) rather than a
+    // hand-copied literal list — this is the exact list every adapter is
+    // registered under, so a provider can never be "live" in the registry
+    // but still rejected here.
+    .enum(PROVIDER_NAMES)
     .optional(),
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),

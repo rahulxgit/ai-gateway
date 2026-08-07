@@ -3,28 +3,37 @@
 // service, and route depends on these — keep them stable.
 // ---------------------------------------------------------------------------
 
-export type ProviderName =
-  | 'gemini'
-  | 'anthropic'
-  | 'openai'
-  | 'groq'
-  | 'together'
-  | 'openrouter'
-  | 'huggingface'
-  | 'deepseek'
-  | 'kimi'
-  | 'cerebras'
-  | 'mistral'
-  | 'cloudflare'
-  | 'fireworks'
-  | 'inference'
-  | 'nebius'
-  | 'sambanova'
-  | 'nvidia'
-  | 'novita'
-  | 'baseten'
-  | 'modelscope'
-  | 'aimlapi';
+// Single source of truth for every provider name in the gateway. The type
+// below is derived from this array (not duplicated) specifically so that
+// Zod validation schemas, the provider registry, and the TypeScript type
+// can never drift apart again — that drift is exactly what let a valid
+// forceProvider value like "fireworks" get rejected by request validation
+// after the adapter itself was already wired up and working.
+export const PROVIDER_NAMES = [
+  'gemini',
+  'anthropic',
+  'openai',
+  'groq',
+  'together',
+  'openrouter',
+  'huggingface',
+  'deepseek',
+  'kimi',
+  'cerebras',
+  'mistral',
+  'cloudflare',
+  'fireworks',
+  'inference',
+  'nebius',
+  'sambanova',
+  'nvidia',
+  'novita',
+  'baseten',
+  'modelscope',
+  'aimlapi',
+] as const;
+
+export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
 export type TaskType =
   | 'coding'
