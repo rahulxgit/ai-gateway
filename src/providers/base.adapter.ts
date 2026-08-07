@@ -52,6 +52,21 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
     const code: ProviderErrorCode = /quota/i.test(msg) ? 'QUOTA_EXCEEDED' : 'RATE_LIMITED';
     return new ProviderError(provider, code, `${provider}: ${msg || 'rate limited'}`, status);
   }
+  // 413 is a disguised TPM (tokens-per-minute) rate limit on at least one
+  // provider (Groq): "Request too large ... on tokens per minute (TPM):
+  // Limit 8000, Requested 15088". It's not actually an oversized payload,
+  // it's a retryable rate limit — classify it as such so the router fails
+  // over instead of surfacing a confusing UNKNOWN.
+  if (status === 413) {
+    const body = axiosErr.response?.data as { error?: { message?: string } | string } | undefined;
+    const msg =
+      (typeof body?.error === 'string' ? body.error : body?.error?.message) ??
+      'request entity too large';
+    if (/tokens per minute|\btpm\b|limit \d+,\s*requested \d+/i.test(msg)) {
+      return new ProviderError(provider, 'RATE_LIMITED', `${provider}: ${msg}`, status);
+    }
+    return new ProviderError(provider, 'INVALID_REQUEST', `${provider}: ${msg}`, status);
+  }
   if (status === 400 || status === 422) {
     // Several providers (confirmed live: Anthropic) return a plain 400 for
     // "your account has no credits" rather than a 402/403 — e.g. "Your

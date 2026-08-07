@@ -30,6 +30,13 @@ export interface OrchestratedRequest extends ChatRequest {
   projectId?: string;
 }
 
+// Cap on how many prior DB turns get injected into every outgoing request.
+// Without this, historyAsChatMessages() loads the *entire* session
+// unbounded — fine for high-TPM providers, but low-TPM free tiers (e.g.
+// Groq at 8K-30K TPM) can 413/429 on a two-word message once a session
+// runs long. Older turns are preserved via conversationSummary instead.
+const MAX_HISTORY_MESSAGES = 20;
+
 export interface OrchestratedResult {
   sessionId: string;
   content: string;
@@ -70,8 +77,12 @@ function buildContextHandoff(
 
   // Conversation memory: prior turns from the DB, not just what the caller
   // passed in this request — this is what makes failover invisible even if
-  // the client only sends the latest message.
-  const priorHistory = historyAsChatMessages(sessionId);
+  // the client only sends the latest message. Capped so long-running
+  // sessions don't silently balloon the payload sent to every provider
+  // (low-TPM providers like Groq's free tier can 413/429 on a "hi" once
+  // history + project context stack up). Older turns still get folded into
+  // conversationSummary via background compression.
+  const priorHistory = historyAsChatMessages(sessionId, MAX_HISTORY_MESSAGES);
 
   const systemParts: string[] = [];
   if (memory) {
