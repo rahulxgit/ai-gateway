@@ -81,7 +81,7 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
     if (/credit balance|insufficient (credit|balance|funds)|add (a )?payment method|low balance/i.test(msg)) {
       return new ProviderError(provider, 'INSUFFICIENT_CREDITS', `${provider}: ${msg}`, status);
     }
-    return new ProviderError(provider, 'INVALID_REQUEST', `${provider}: invalid request`, status);
+    return new ProviderError(provider, 'INVALID_REQUEST', `${provider}: ${msg || 'invalid request'}`, status);
   }
   if (status && status >= 500) {
     return new ProviderError(provider, 'SERVER_ERROR', `${provider}: server error (${status})`, status);
