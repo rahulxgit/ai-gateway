@@ -66,7 +66,7 @@ frontend/src/
 | Provider | Model | Max output | Verified? | Vision? |
 |---|---|---|---|---|
 | OpenAI | `gpt-5-nano` | 128,000 | ✅ | ✅ |
-| Gemini | `gemini-2.5-flash-lite` | 65,536 | ✅ | ✅ |
+| Gemini | `gemini-3.1-flash-lite` | 65,536 | ✅ (not independently re-verified for 3.1 specifically) | ✅ |
 | Anthropic | `claude-haiku-4-5-20251001` | 64,000 | ✅ | ✅ |
 | DeepSeek | `deepseek-v4-flash` | 384,000 | ✅ | ❌ |
 | Together | `meta-llama/Llama-3.3-70B-Instruct-Turbo` | 64,000 | ⚠️ context-bound estimate | ❌ |
@@ -121,6 +121,13 @@ selected).
   If Fireworks requests start 404ing again, re-run `GET
   /v1/models` against the account key before assuming it's a code bug —
   their catalog appears to churn fast.
+- **Gemini default switched 2.5 Flash-Lite → 3.1 Flash-Lite** (2026-08-07)
+  after real free-tier rate-limit hits within only a few chat turns.
+  3.1 Flash-Lite is still on the older `generateContent` API shape this
+  adapter uses. Google has since shipped 3.5 Flash-Lite / 3.6 Flash as GA,
+  which deprecate `temperature`/`top_p`/`top_k` and introduce a new
+  `/interactions` endpoint — migrating to those needs an adapter rewrite,
+  not a one-line model-string swap, so it was deliberately skipped for now.
 
 ---
 

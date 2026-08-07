@@ -56,7 +56,7 @@ export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
 // blended prompt+completion figures — meant for relative cost tracking, not
 // billing-grade accuracy. Update as providers change pricing.
 export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
-  gemini: 0.00025, // gemini-2.5-flash-lite: $0.10/$0.40 per 1M, blended estimate
+  gemini: 0.0009, // gemini-3.1-flash-lite: ~$0.25/$1.50 per 1M, blended estimate
   anthropic: 0.003, // claude-haiku-4-5: cheapest current Claude tier
   openai: 0.0002, // gpt-5-nano: $0.05/$0.40 per 1M, blended estimate
   groq: 0.0002,
