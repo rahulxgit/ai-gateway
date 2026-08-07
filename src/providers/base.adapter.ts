@@ -53,6 +53,19 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
     return new ProviderError(provider, code, `${provider}: ${msg || 'rate limited'}`, status);
   }
   if (status === 400 || status === 422) {
+    // Several providers (confirmed live: Anthropic) return a plain 400 for
+    // "your account has no credits" rather than a 402/403 — e.g. "Your
+    // credit balance is too low to access the Anthropic API." That's a
+    // billing problem, not a malformed request, and looks completely
+    // different in the router/health panel than a genuine bad payload.
+    const body = axiosErr.response?.data as
+      | { error?: { message?: string } | string; message?: string }
+      | undefined;
+    const msg =
+      (typeof body?.error === 'string' ? body.error : body?.error?.message) ?? body?.message ?? '';
+    if (/credit balance|insufficient (credit|balance|funds)|add (a )?payment method|low balance/i.test(msg)) {
+      return new ProviderError(provider, 'INSUFFICIENT_CREDITS', `${provider}: ${msg}`, status);
+    }
     return new ProviderError(provider, 'INVALID_REQUEST', `${provider}: invalid request`, status);
   }
   if (status && status >= 500) {

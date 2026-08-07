@@ -100,6 +100,7 @@ export type ProviderErrorCode =
   | 'UNAVAILABLE'
   | 'AUTH_ERROR'
   | 'ACCOUNT_SUSPENDED'
+  | 'INSUFFICIENT_CREDITS'
   | 'NOT_FOUND'
   | 'INVALID_REQUEST'
   | 'UNKNOWN';

@@ -29,6 +29,14 @@ describe('health.service — status transitions', () => {
     expect(snap?.lastError).toContain('suspended');
   });
 
+  it('marks a provider down immediately on INSUFFICIENT_CREDITS, without waiting for repeated failures', () => {
+    recordSuccess('anthropic', 100);
+    recordFailure('anthropic', 'INSUFFICIENT_CREDITS', 'anthropic: Your credit balance is too low');
+    const snap = snapshotFor('anthropic');
+    expect(snap?.status).toBe('down');
+    expect(snap?.consecutiveFailures).toBe(1);
+  });
+
   it('marks a provider degraded on a single generic failure, down after the threshold', () => {
     recordSuccess('mistral', 100);
     recordFailure('mistral', 'SERVER_ERROR', 'mistral: server error (500)');
