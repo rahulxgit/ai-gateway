@@ -99,6 +99,8 @@ export type ProviderErrorCode =
   | 'SERVER_ERROR'
   | 'UNAVAILABLE'
   | 'AUTH_ERROR'
+  | 'ACCOUNT_SUSPENDED'
+  | 'NOT_FOUND'
   | 'INVALID_REQUEST'
   | 'UNKNOWN';
 

@@ -20,6 +20,32 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
   if (status === 401 || status === 403) {
     return new ProviderError(provider, 'AUTH_ERROR', `${provider}: authentication failed`, status);
   }
+  // 412 is billing-account-suspension in disguise for at least one provider
+  // in this gateway (Fireworks: "Account is suspended, possibly due to
+  // reaching the monthly spending limit or failure to pay past invoices").
+  // Not an auth problem and not fixable by retrying — surfacing it as its
+  // own code means health/logs say "billing issue" instead of "unknown".
+  if (status === 412) {
+    const body = axiosErr.response?.data as { error?: { message?: string } | string } | undefined;
+    const msg =
+      (typeof body?.error === 'string' ? body.error : body?.error?.message) ??
+      'account suspended (billing/spending limit)';
+    return new ProviderError(provider, 'ACCOUNT_SUSPENDED', `${provider}: ${msg}`, status);
+  }
+  if (status === 404) {
+    // Distinct from a generic 4xx: the endpoint/model path itself wasn't
+    // found, as opposed to the request body being rejected. Most commonly
+    // a renamed/deprecated model ID, but can also mask an account-level
+    // issue on providers that 404 instead of 402/403/412 for that case
+    // (seen on Fireworks depending on which route is hit) — worth checking
+    // the provider dashboard directly if the model ID is confirmed correct.
+    return new ProviderError(
+      provider,
+      'NOT_FOUND',
+      `${provider}: model or endpoint not found — check the model ID is still valid, and confirm the account isn't suspended`,
+      status
+    );
+  }
   if (status === 429) {
     const body = axiosErr.response?.data as { error?: { message?: string } } | undefined;
     const msg = body?.error?.message ?? '';

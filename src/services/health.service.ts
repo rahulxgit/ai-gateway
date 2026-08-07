@@ -47,6 +47,11 @@ export function recordFailure(
 
   if (errorCode === 'RATE_LIMITED' || errorCode === 'QUOTA_EXCEEDED') {
     s.status = 'rate_limited';
+  } else if (errorCode === 'ACCOUNT_SUSPENDED') {
+    // Billing/spending-limit suspension isn't a transient blip that a
+    // couple of retries would recover from — treat it as down immediately
+    // rather than waiting for DOWN_AFTER_FAILURES consecutive failures.
+    s.status = 'down';
   } else if (s.consecutiveFailures >= DOWN_AFTER_FAILURES) {
     s.status = 'down';
   } else {

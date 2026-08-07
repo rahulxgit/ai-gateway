@@ -45,6 +45,36 @@ describe('classifyError', () => {
     expect(err.retryable).toBe(false);
   });
 
+  it('classifies 404 as NOT_FOUND and retryable (fails over to next provider)', () => {
+    const err = classifyError('fireworks', fakeAxiosError(404));
+    expect(err.code).toBe('NOT_FOUND');
+    expect(err.retryable).toBe(true);
+  });
+
+  // Regression test: Fireworks returns HTTP 412 for a suspended account
+  // (spending limit reached / no payment method / unpaid invoice), not a
+  // 401/402/403. Before this, that fell through to the generic UNKNOWN
+  // bucket, which made a billing problem look like an unexplained failure
+  // in logs and health status instead of a clear "check your account"
+  // signal.
+  it('classifies 412 as ACCOUNT_SUSPENDED and surfaces the provider message', () => {
+    const err = classifyError(
+      'fireworks',
+      fakeAxiosError(412, undefined, {
+        error: 'Account superhello2099 is suspended, possibly due to reaching the monthly spending limit',
+      })
+    );
+    expect(err.code).toBe('ACCOUNT_SUSPENDED');
+    expect(err.retryable).toBe(true);
+    expect(err.message).toContain('suspended');
+  });
+
+  it('classifies 412 with no body using a sensible default message', () => {
+    const err = classifyError('fireworks', fakeAxiosError(412));
+    expect(err.code).toBe('ACCOUNT_SUSPENDED');
+    expect(err.message.toLowerCase()).toContain('suspended');
+  });
+
   it('classifies ECONNABORTED as TIMEOUT', () => {
     const err = classifyError('openrouter', fakeAxiosError(undefined, 'ECONNABORTED'));
     expect(err.code).toBe('TIMEOUT');
