@@ -12,6 +12,14 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
+// Only needed when the backend has GATEWAY_API_KEY set (see
+// src/middleware/index.ts requireGatewayKey). Left unset, the header is
+// simply omitted and the gateway behaves exactly as before if it's also
+// running with no key configured. Vite only exposes env vars prefixed
+// with VITE_ to client code, and only at build time — see README/setup
+// notes for how to set this in Vercel.
+const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
+
 // Render's free tier spins down after inactivity — a cold start can take
 // 30-50s before the backend responds at all. Without a client-side
 // timeout, a fetch during a cold start just hangs with no feedback beyond
@@ -34,6 +42,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         // FormData sets its own multipart boundary header — forcing JSON
         // here would break file uploads silently.
         ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
         ...(init?.headers ?? {}),
       },
     });
