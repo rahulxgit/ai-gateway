@@ -5,10 +5,10 @@ export class NovitaAdapter extends OpenAICompatibleAdapter {
   constructor() {
     super({
       name: 'novita',
-      baseUrl: 'https://api.novita.ai/v3/openai',
+      baseUrl: 'https://api.novita.ai/openai/v1',
       apiKey: env.novitaApiKey,
       defaultModel: 'meta-llama/llama-3.3-70b-instruct',
-      maxOutputTokens: 16384,
+      maxOutputTokens: 12288,
     });
   }
 }
