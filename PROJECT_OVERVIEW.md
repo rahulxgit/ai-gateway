@@ -72,7 +72,7 @@ frontend/src/
 | Together | `meta-llama/Llama-3.3-70B-Instruct-Turbo` | 64,000 | ⚠️ context-bound estimate | ❌ |
 | Mistral | `mistral-small-latest` | 64,000 | ⚠️ context-bound estimate | ❌ |
 | Cerebras | `gpt-oss-120b` | 40,960 | ✅ | ❌ |
-| Groq | `llama-3.3-70b-versatile` | 32,768 | ✅ | ❌ |
+| Groq | `qwen/qwen3.6-27b` | 16,384 | ✅ verified live 2026-08-07 (see bug #11) | ❌ (reasoning model — `reasoning_format: 'hidden'` set to suppress `<think>` output) |
 | OpenRouter | `meta-llama/llama-3.3-70b-instruct` | 16,384 | ✅ | ❌ |
 | Hugging Face | `meta-llama/Llama-3.3-70B-Instruct` | 8,192 | ⚠️ router proxies dynamically, unverifiable | ❌ |
 | Kimi (Moonshot) | `kimi-k2.6` | 8,192 | ⚠️ conservative guess | ❌ |
@@ -89,7 +89,12 @@ frontend/src/
 
 **Every adapter clamps requested `maxTokens` to its own ceiling** (see
 `src/providers/openai-compatible.adapter.ts` `Math.min` pattern) — an
-over-limit request never hard-fails, it just gets capped.
+over-limit request never hard-fails, it just gets capped. **When no
+`maxTokens` is specified, the default is `DEFAULT_MAX_TOKENS = 1024`, not
+the provider's full ceiling** — some providers (Groq confirmed) count
+*requested* max_tokens against their TPM rate limit upfront, so defaulting
+to the full ceiling on every request could exhaust a low TPM budget before
+generating anything. See bug #11 below.
 
 Vision-capable providers only: **Gemini, Anthropic, OpenAI**. Router
 auto-restricts image-bearing requests to these three
@@ -121,6 +126,18 @@ selected).
   If Fireworks requests start 404ing again, re-run `GET
   /v1/models` against the account key before assuming it's a code bug —
   their catalog appears to churn fast.
+- **Groq deprecated `meta-llama/llama-4-scout-17b-16e-instruct`** on
+  2026-06-17 (confirmed 404 in prod 2026-08-07 — two months of drift
+  before it was noticed). Current default is `qwen/qwen3.6-27b`. Groq's
+  model catalog and per-model TPM/max_tokens limits appear to change
+  often and are account-specific (no longer a fixed public table — check
+  live at `console.groq.com/settings/limits`). **`GET /health/models`
+  (added after this incident, `model-validation.service.ts`) checks every
+  configured provider's default model against its live catalog on every
+  boot and logs a warning if one goes missing — check that endpoint /
+  Render startup logs first if Groq (or any OpenAI-compatible provider)
+  starts silently failing over again**, before re-diagnosing from
+  scratch.
 - **Gemini default switched 2.5 Flash-Lite → 3.1 Flash-Lite** (2026-08-07)
   after real free-tier rate-limit hits within only a few chat turns.
   3.1 Flash-Lite is still on the older `generateContent` API shape this
@@ -200,6 +217,34 @@ env vars first — this bit us once with `MAX_PROMPT_LENGTH`.
    `ACCOUNT_SUSPENDED` (412) and `NOT_FOUND` (404) as their own codes so
    this is diagnosable from Render logs / the health panel directly.
 10. Fireworks default model — see "Known deprecation risk" above.
+11. Groq multi-bug saga (Aug 2026) — four independent bugs stacked on top
+    of each other, each one masking the next until the previous was fixed:
+    - `meta-llama/llama-4-scout-17b-16e-instruct` was deprecated by Groq
+      (2026-06-17) — `model or endpoint not found`, silently failed over
+      to Gemini. Switched to `qwen/qwen3.6-27b`.
+    - `maxOutputTokens` was stale at `32768`, a leftover from an even
+      earlier default model, never updated across two subsequent model
+      swaps — every request got a flat 400 (`max_tokens` must be ≤
+      `16384`) and failed over. Corrected to `16384`.
+    - `classifyError`'s 400/422 branch extracted the provider's actual
+      error text into a `msg` variable but never used it, always
+      returning the literal string `"invalid request"` — `/health`'s
+      `lastError` was useless for diagnosing any of the above until this
+      was fixed to surface the real message.
+    - Even after both real bugs were fixed, `qwen/qwen3.6-27b` (8,000 TPM
+      on this account) still 413'd, because the adapter defaulted
+      `max_tokens` to the *entire* `maxOutputTokens` ceiling whenever a
+      caller didn't specify one — Groq counts *requested* max_tokens
+      against TPM upfront, so a bare `"hi"` was reserving 16,384 tokens
+      before generating anything. Added `DEFAULT_MAX_TOKENS = 1024` as a
+      sane default; explicit `maxTokens` still clamps to the real ceiling.
+    - Once real replies came back, `qwen3.6-27b` (a reasoning model) was
+      leaking its internal chain-of-thought into visible `content` via
+      `<think>...</think>` tags. Fixed with `reasoning_format: 'hidden'`
+      (Groq-specific, via a new `extraBodyParams` adapter hook) plus a
+      defensive `stripThinkTags()` regex as a backstop, since
+      `reasoning_format=hidden` has been reported unreliable for some
+      Groq reasoning models in the wild.
 
 **Pattern**: most real bugs here were *stale/wrong model IDs*, *config
 defaults silently overridden elsewhere*, or *a value added in one place
@@ -208,6 +253,32 @@ classifies against it* — rarely core logic errors. When adding a provider,
 grep for every other hardcoded provider list (request validation schemas,
 frontend label maps, error classifiers), not just the registry + type. Check
 these two categories first when something that "should" work doesn't.
+
+**Newer pattern (the Groq saga above): silent defaults mask downstream
+failures, one layer at a time.** A default that's silently wrong doesn't
+just cause one bug — it hides whatever bug is *behind* it, because the
+request never gets far enough to hit it. Symptoms:
+- Fixing one bug reveals what looks like a *new* bug, not progress. (Fix
+  the deprecated model → now the ceiling is wrong. Fix the ceiling → now
+  the default max_tokens blows TPM. Fix that → now reasoning tags leak.)
+  Each fix was correct; each one just uncovered the next layer.
+- The generic error message (`classifyError` returning a hardcoded string
+  instead of the provider's real text) made every layer *look* identical
+  from `/health` — "invalid request" told us nothing until that itself
+  was fixed. **A swallowed error message is itself a bug that hides other
+  bugs — fix error-surfacing first when debugging a chain like this.**
+- A value that "should" auto-scale with context (here: `max_tokens`
+  defaulting to `maxOutputTokens`, the full ceiling) instead ossifies at
+  whatever was reasonable when it was written, and stays silently wrong
+  through every subsequent model swap. Any `?? someOtherConfigValue`
+  fallback is a candidate for this — ask whether the fallback should be a
+  fixed, deliberately-chosen constant instead of inheriting a ceiling
+  meant for something else.
+- When a fix doesn't work, don't discard the previous fix and guess again
+  — verify what actually changed (a real model swap? a genuinely new
+  error?) before concluding the earlier diagnosis was wrong. Three of the
+  four Groq bugs were only found by reading the *literal* error string
+  from `/health` after each attempted fix, not by re-guessing.
 
 ---
 
