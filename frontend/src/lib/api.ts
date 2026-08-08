@@ -12,17 +12,42 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
+// Render's free tier spins down after inactivity — a cold start can take
+// 30-50s before the backend responds at all. Without a client-side
+// timeout, a fetch during a cold start just hangs with no feedback beyond
+// the generic "routing…" spinner and no way to cancel. 55s gives a cold
+// start room to finish while still eventually surfacing a clear error
+// instead of hanging indefinitely.
+const REQUEST_TIMEOUT_MS = 55_000;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData;
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      // FormData sets its own multipart boundary header — forcing JSON
-      // here would break file uploads silently.
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(init?.headers ?? {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        // FormData sets its own multipart boundary header — forcing JSON
+        // here would break file uploads silently.
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(
+        'The gateway took too long to respond — if this is the first request in a while, the backend may just be waking up from an idle sleep. Please try again.'
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data?.error ?? data?.detail ?? `Request failed (${res.status})`);
