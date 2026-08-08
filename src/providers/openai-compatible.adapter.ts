@@ -22,6 +22,16 @@ import { classifyError, createSseFrameParser, estimateCost } from './base.adapte
 // passing maxTokens explicitly.
 const DEFAULT_MAX_TOKENS = 1024;
 
+// Defensive safety net for reasoning models (e.g. Groq's qwen3.6-27b) that
+// leak internal chain-of-thought into the visible content wrapped in
+// <think>...</think> tags. We already ask providers to suppress this via
+// extraBodyParams (e.g. reasoning_format: 'hidden'), but that setting has
+// been reported unreliable in the wild — this is a no-op for any response
+// that never contained the tags in the first place.
+function stripThinkTags(content: string): string {
+  return content.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
+}
+
 // Converts our internal ChatMessage (which carries an optional `images`
 // array) into the OpenAI chat-completions wire format. Messages with no
 // images stay a plain string for maximum compatibility with providers that
@@ -59,6 +69,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly extraHeaders: Record<string, string>;
+  // Provider-specific request body fields that aren't part of the common
+  // OpenAI-compatible surface (e.g. Groq's reasoning_format). Kept
+  // per-adapter rather than in the shared base logic since other
+  // OpenAI-compatible providers may reject unrecognized fields.
+  private readonly extraBodyParams: Record<string, unknown>;
 
   constructor(config: {
     name: ProviderName;
@@ -68,6 +83,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     extraHeaders?: Record<string, string>;
     supportsVision?: boolean;
     maxOutputTokens?: number;
+    extraBodyParams?: Record<string, unknown>;
   }) {
     this.name = config.name;
     this.baseUrl = config.baseUrl;
@@ -82,6 +98,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     // real ceiling — better to under-ask than to send an invalid
     // over-limit value that hard-fails instead of failing over cleanly.
     this.maxOutputTokens = config.maxOutputTokens ?? 8192;
+    this.extraBodyParams = config.extraBodyParams ?? {};
   }
 
   isConfigured(): boolean {
@@ -108,11 +125,12 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           messages: toOpenAIMessages(options.messages),
           temperature: options.temperature ?? 0.7,
           max_tokens: Math.min(options.maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
+          ...this.extraBodyParams,
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs }
       );
 
-      const content = data.choices?.[0]?.message?.content ?? '';
+      const content = stripThinkTags(data.choices?.[0]?.message?.content ?? '');
       const usage = {
         promptTokens: data.usage?.prompt_tokens ?? 0,
         completionTokens: data.usage?.completion_tokens ?? 0,
@@ -151,6 +169,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           temperature: options.temperature ?? 0.7,
           max_tokens: Math.min(options.maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
           stream: true,
+          ...this.extraBodyParams,
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs, responseType: 'stream' }
       );
@@ -185,7 +204,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       return {
         provider: this.name,
         model,
-        content: fullText,
+        content: stripThinkTags(fullText),
         usage,
         latencyMs: Date.now() - start,
         estimatedCostUsd: estimateCost(usage.totalTokens, PRICING_PER_1K_TOKENS[this.name]),

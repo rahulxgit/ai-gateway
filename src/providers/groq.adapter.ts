@@ -20,6 +20,15 @@ export class GroqAdapter extends OpenAICompatibleAdapter {
       // earlier default model — which meant every single request was
       // rejected outright and silently failed over to the next provider.
       maxOutputTokens: 16384,
+      // qwen/qwen3.6-27b is a reasoning model that, by default, emits its
+      // internal chain-of-thought inline in the content field wrapped in
+      // <think>...</think> tags (Groq's "raw" format). "hidden" returns
+      // only the final answer — verified against Groq's own docs for this
+      // model. (Note: reasoning_effort='none' would fully disable
+      // reasoning instead, but hidden is the more conservative choice —
+      // it keeps the model's actual reasoning quality, just hides it from
+      // the visible response.)
+      extraBodyParams: { reasoning_format: 'hidden' },
     });
   }
 }
