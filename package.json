@@ -12,7 +12,8 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "migrate": "ts-node src/database/migrate.ts"
+    "migrate": "ts-node src/database/migrate.ts",
+    "check-providers": "ts-node src/scripts/check-providers.ts"
   },
   "dependencies": {
     "axios": "^1.7.7",
