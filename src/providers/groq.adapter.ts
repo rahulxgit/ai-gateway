@@ -14,9 +14,12 @@ export class GroqAdapter extends OpenAICompatibleAdapter {
       // openai/gpt-oss-120b, which was our original 8K-TPM default and
       // the reason we moved off it in the first place).
       defaultModel: 'qwen/qwen3.6-27b',
-      // Verified against Groq's own docs: llama-3.3-70b-versatile caps
-      // output at 32,768 tokens.
-      maxOutputTokens: 32768,
+      // Groq caps max_tokens at 16,384 for qwen/qwen3.6-27b specifically
+      // (confirmed via a live 400: "`max_tokens` must be less than or
+      // equal to `16384`"). This was stale at 32,768 — a leftover from an
+      // earlier default model — which meant every single request was
+      // rejected outright and silently failed over to the next provider.
+      maxOutputTokens: 16384,
     });
   }
 }
