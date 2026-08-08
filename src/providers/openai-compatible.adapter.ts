@@ -12,6 +12,16 @@ import { env } from '../config/env';
 import { PRICING_PER_1K_TOKENS } from '../config/routing';
 import { classifyError, createSseFrameParser, estimateCost } from './base.adapter';
 
+// Providers like Groq count the *requested* max_tokens against your TPM
+// budget upfront, before a single token is generated — not just what's
+// actually produced. Previously, when a caller didn't specify maxTokens,
+// this adapter defaulted to reserving the entire maxOutputTokens ceiling
+// (e.g. 16,384) on every request, so even "hi" could blow a low TPM cap.
+// This is a much saner "normal chat reply" default budget; callers that
+// actually need long-form output still get up to the real ceiling by
+// passing maxTokens explicitly.
+const DEFAULT_MAX_TOKENS = 1024;
+
 // Converts our internal ChatMessage (which carries an optional `images`
 // array) into the OpenAI chat-completions wire format. Messages with no
 // images stay a plain string for maximum compatibility with providers that
@@ -97,7 +107,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           model,
           messages: toOpenAIMessages(options.messages),
           temperature: options.temperature ?? 0.7,
-          max_tokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
+          max_tokens: Math.min(options.maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs }
       );
@@ -139,7 +149,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           model,
           messages: toOpenAIMessages(options.messages),
           temperature: options.temperature ?? 0.7,
-          max_tokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
+          max_tokens: Math.min(options.maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
           stream: true,
         },
         { headers: this.headers(), timeout: env.requestTimeoutMs, responseType: 'stream' }

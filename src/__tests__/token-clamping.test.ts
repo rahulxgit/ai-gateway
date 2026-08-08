@@ -49,13 +49,27 @@ describe('OpenAICompatibleAdapter max token clamping', () => {
     expect(sentBody.max_tokens).toBe(2000);
   });
 
-  it('falls back to the provider ceiling itself when no maxTokens is requested', async () => {
-    const adapter = makeAdapter(8000); // e.g. DeepSeek's real ceiling
+  it('uses a sane default budget (not the full ceiling) when no maxTokens is requested', async () => {
+    // Regression test: Groq (and likely others) count *requested*
+    // max_tokens against TPM rate limits upfront. Defaulting to the full
+    // ceiling on every request meant even "hi" could reserve e.g. 16,384
+    // tokens and blow a low TPM cap before generating a single token.
+    const adapter = makeAdapter(16384);
 
     await adapter.chat({ messages: [{ role: 'user', content: 'hi' }] });
 
     const sentBody = mockedAxios.post.mock.calls[0][1] as { max_tokens: number };
-    expect(sentBody.max_tokens).toBe(8000);
+    expect(sentBody.max_tokens).toBe(1024);
+    expect(sentBody.max_tokens).toBeLessThan(16384);
+  });
+
+  it('still clamps the default down if a provider ceiling is below the default budget', async () => {
+    const adapter = makeAdapter(512); // hypothetical very low ceiling
+
+    await adapter.chat({ messages: [{ role: 'user', content: 'hi' }] });
+
+    const sentBody = mockedAxios.post.mock.calls[0][1] as { max_tokens: number };
+    expect(sentBody.max_tokens).toBe(512);
   });
 });
 
