@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
-import { apiRateLimiter, errorHandler, notFoundHandler, requireGatewayKey, sanitizeInput } from './middleware';
+import { apiRateLimiter, errorHandler, notFoundHandler, sanitizeInput } from './middleware';
 import chatRoutes from './routes/chat.routes';
 import sessionRoutes from './routes/session.routes';
 import analyticsRoutes from './routes/analytics.routes';
@@ -28,14 +28,11 @@ export function createApp() {
 
   app.get('/', (_req, res) => res.json({ name: 'AI Gateway', status: 'running' }));
 
-  // Only the cost-incurring routes (chat, uploads) are gated — sessions,
-  // analytics, and project reads stay open since they don't spend provider
-  // tokens. Gate is a no-op unless GATEWAY_API_KEY is set (see middleware).
-  app.use(requireGatewayKey, chatRoutes);
+  app.use(chatRoutes);
   app.use(sessionRoutes);
   app.use(analyticsRoutes);
   app.use(projectRoutes);
-  app.use(requireGatewayKey, uploadRoutes);
+  app.use(uploadRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
