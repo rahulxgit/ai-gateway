@@ -92,3 +92,22 @@ export function errorHandler(
 export function notFoundHandler(req: Request, res: Response) {
   res.status(404).json({ error: `Not found: ${req.method} ${req.path}` });
 }
+
+// Gate the request-costing routes (chat, uploads — anything that spends
+// provider tokens) behind an optional bearer token. No-op when
+// GATEWAY_API_KEY isn't set, so local dev and existing open deployments
+// keep working exactly as before; set the env var to require
+// `Authorization: Bearer <key>` in production.
+export function requireGatewayKey(req: Request, res: Response, next: NextFunction) {
+  if (!env.gatewayApiKey) {
+    next();
+    return;
+  }
+  const header = req.headers.authorization ?? '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : undefined;
+  if (token !== env.gatewayApiKey) {
+    res.status(401).json({ error: 'Unauthorized — missing or invalid API key' });
+    return;
+  }
+  next();
+}

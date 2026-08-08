@@ -59,6 +59,15 @@ export const env = {
 
   corsOrigin: optional('CORS_ORIGIN', '*'),
   logLevel: optional('LOG_LEVEL', 'info'),
+
+  // Optional bearer-token gate for /chat* and /uploads. When unset (the
+  // default), the gateway behaves exactly as before — fully open, which is
+  // fine for local dev or a personal/no-cost setup. When set, requests to
+  // the gated routes must send `Authorization: Bearer <GATEWAY_API_KEY>` or
+  // get a 401. This closes the "anyone can spend your provider quota"
+  // gap called out in the README's own security warning, without breaking
+  // any existing deployment that hasn't set the var.
+  gatewayApiKey: optional('GATEWAY_API_KEY', ''),
 };
 
 export type Env = typeof env;
