@@ -79,7 +79,7 @@ frontend/src/
 | Novita AI | `meta-llama/llama-3.3-70b-instruct` | 16,384 | ⚠️ conservative | ❌ |
 | Nebius AI Studio | `meta-llama/Llama-3.3-70B-Instruct` | 32,768 | ⚠️ conservative | ❌ |
 | Fireworks AI | `accounts/fireworks/models/gpt-oss-120b` | 32,768 | ✅ verified live 2026-08-07 | ❌ |
-| Inference.net | `meta-llama/llama-3.3-70b-instruct/fp-8` | 8,192 | ⚠️ conservative | ❌ |
+| Inference.net | `inference-net/schematron-v2-turbo` | 8,192 | ⚠️ conservative (model swap verified live 2026-08-08, ceiling not) | ❌ |
 | SambaNova Cloud | `Meta-Llama-3.3-70B-Instruct` | 8,192 | ⚠️ conservative | ❌ |
 | NVIDIA NIM | `meta/llama-3.3-70b-instruct` | 8,192 | ⚠️ conservative | ❌ |
 | Baseten | `meta-llama/Llama-3.3-70B-Instruct` | 8,192 | ⚠️ conservative | ❌ |
@@ -111,6 +111,13 @@ selected).
 ---
 
 ## Known deprecation risk
+
+- **Inference.net dropped the entire Llama 3.x line from its catalog**
+  (confirmed live 2026-08-08 — `GET /v1/models` returned zero matches for
+  "llama" among 37 models). Current catalog is built around their own
+  "schematron" family instead. Default switched from
+  `meta-llama/llama-3.3-70b-instruct/fp-8` to
+  `inference-net/schematron-v2-turbo`.
 
 - `deepseek-chat` → `deepseek-v4-flash` migration (completed, was due
   2026-07-24). `deepseek-v4-flash` defaults to "thinking mode" on
@@ -217,6 +224,17 @@ env vars first — this bit us once with `MAX_PROMPT_LENGTH`.
    `ACCOUNT_SUSPENDED` (412) and `NOT_FOUND` (404) as their own codes so
    this is diagnosable from Render logs / the health panel directly.
 10. Fireworks default model — see "Known deprecation risk" above.
+12. **Inference.net dropped the entire Llama 3.x line from its catalog**
+    (confirmed live 2026-08-08 via `GET /v1/models` against a real
+    account — zero matches for "llama" among 37 returned models). Same
+    pattern as Fireworks: the whole model family was retired, not just
+    one ID renamed. Default switched from
+    `meta-llama/llama-3.3-70b-instruct/fp-8` to
+    `inference-net/schematron-v2-turbo`, inference.net's own general-tier
+    model, chosen from what was actually present in the live catalog
+    rather than guessed. `maxOutputTokens` left unchanged at the existing
+    conservative `8192` since the `/models` response didn't return
+    per-model output ceilings to verify against.
 11. Groq multi-bug saga (Aug 2026) — four independent bugs stacked on top
     of each other, each one masking the next until the previous was fixed:
     - `meta-llama/llama-4-scout-17b-16e-instruct` was deprecated by Groq
