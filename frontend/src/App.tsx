@@ -80,19 +80,19 @@ export default function App() {
         taskType,
         forceProvider: forceProvider === 'auto' ? undefined : forceProvider,
         model: modelOverride || undefined,
-        // Code output (HTML/CSS/full files) tends to run much longer than
-        // conversational replies — the 4096-token adapter default was
-        // silently truncating pages mid-attribute. Ask for more headroom
-        // specifically for coding tasks rather than raising it globally.
-        // Requesting a higher ceiling costs nothing extra — you only pay
-        // for tokens the model actually generates, not the cap itself.
-        // 64000 matches the real max output of the two vision-capable
-        // providers most likely to be handling requests (Gemini 2.5
-        // Flash-Lite: 65,536; Claude Haiku 4.5: exactly 64,000). Other
-        // providers with lower real ceilings will simply reject the
-        // request and the router fails over cleanly, same as any other
-        // provider error.
-        maxTokens: 64000,
+        // Only coding tasks (long code/file output) need headroom above
+        // the backend's own sane default (DEFAULT_MAX_TOKENS = 1024 in
+        // openai-compatible.adapter.ts). Sending 64000 unconditionally on
+        // every request — including a one-word "hi" — makes every
+        // provider adapter reserve its full ceiling upfront via
+        // Math.min(maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
+        // which reintroduces the exact Groq TPM bug documented as bug #11
+        // in PROJECT_OVERVIEW.md (a low-TPM provider 413s before
+        // generating anything). Leaving maxTokens undefined for
+        // non-coding tasks lets the backend's per-provider default
+        // budget apply as intended; each provider still clamps up to its
+        // own real ceiling if the caller does ask for more.
+        maxTokens: taskType === 'coding' ? 64000 : undefined,
       });
 
       if (!activeSessionId) {
