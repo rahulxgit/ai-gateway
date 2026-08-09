@@ -74,6 +74,16 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   // per-adapter rather than in the shared base logic since other
   // OpenAI-compatible providers may reject unrecognized fields.
   private readonly extraBodyParams: Record<string, unknown>;
+  // Overrides the global env.requestTimeoutMs for this provider only.
+  // Added after a real, reproducible finding: NVIDIA NIM's free tier can
+  // take 60+ seconds to cold-start meta/llama-3.3-70b-instruct (measured
+  // live: ~61s for a two-word prompt), well past the global 30s default —
+  // every forced request to nvidia was hitting TIMEOUT and failing over
+  // before the model ever finished responding. Bumping the *global*
+  // timeout would be worse: it would slow down real-outage detection for
+  // every other provider too. This lets one slow provider get more
+  // patience without affecting the rest of the failover chain.
+  private readonly requestTimeoutMs?: number;
 
   constructor(config: {
     name: ProviderName;
@@ -84,6 +94,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     supportsVision?: boolean;
     maxOutputTokens?: number;
     extraBodyParams?: Record<string, unknown>;
+    requestTimeoutMs?: number;
   }) {
     this.name = config.name;
     this.baseUrl = config.baseUrl;
@@ -99,10 +110,15 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     // over-limit value that hard-fails instead of failing over cleanly.
     this.maxOutputTokens = config.maxOutputTokens ?? 8192;
     this.extraBodyParams = config.extraBodyParams ?? {};
+    this.requestTimeoutMs = config.requestTimeoutMs;
   }
 
   isConfigured(): boolean {
     return Boolean(this.apiKey);
+  }
+
+  private effectiveTimeoutMs(): number {
+    return this.requestTimeoutMs ?? env.requestTimeoutMs;
   }
 
   private headers() {
@@ -127,7 +143,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           max_tokens: Math.min(options.maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
           ...this.extraBodyParams,
         },
-        { headers: this.headers(), timeout: env.requestTimeoutMs }
+        { headers: this.headers(), timeout: this.effectiveTimeoutMs() }
       );
 
       const content = stripThinkTags(data.choices?.[0]?.message?.content ?? '');
@@ -171,7 +187,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           stream: true,
           ...this.extraBodyParams,
         },
-        { headers: this.headers(), timeout: env.requestTimeoutMs, responseType: 'stream' }
+        { headers: this.headers(), timeout: this.effectiveTimeoutMs(), responseType: 'stream' }
       );
 
       await new Promise<void>((resolve, reject) => {

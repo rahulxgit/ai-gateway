@@ -9,6 +9,16 @@ export class NvidiaAdapter extends OpenAICompatibleAdapter {
       apiKey: env.nvidiaApiKey,
       defaultModel: 'meta/llama-3.3-70b-instruct',
       maxOutputTokens: 8192,
+      // NVIDIA NIM's free tier can cold-start this model very slowly —
+      // measured live at ~61s for a two-word prompt, well past the
+      // gateway's global 30s default (env.requestTimeoutMs), which meant
+      // every request here hit TIMEOUT and failed over before the model
+      // ever finished responding. 90s gives real headroom above the
+      // observed worst case without being unbounded. This only affects
+      // nvidia — the global timeout used by every other provider is
+      // untouched, so real outages on other providers still fail over
+      // at the normal speed.
+      requestTimeoutMs: 90_000,
     });
   }
 }
