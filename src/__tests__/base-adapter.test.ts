@@ -33,6 +33,55 @@ describe('classifyError', () => {
     expect(classifyError('anthropic', fakeAxiosError(403)).code).toBe('AUTH_ERROR');
   });
 
+  // Regression test: captured live from api.novita.ai on a real,
+  // out-of-funds account. Novita returns this as a 403, indistinguishable
+  // from a bad API key by status code alone — the router's /health panel
+  // previously showed "authentication failed" for what was actually a
+  // billing problem, sending anyone debugging it toward rotating a key
+  // that was never broken in the first place.
+  it('classifies a 403 with balance language as INSUFFICIENT_CREDITS, not AUTH_ERROR', () => {
+    const err = classifyError(
+      'novita',
+      fakeAxiosError(403, undefined, {
+        code: 403,
+        reason: 'NOT_ENOUGH_BALANCE',
+        message: 'not enough balance',
+      })
+    );
+    expect(err.code).toBe('INSUFFICIENT_CREDITS');
+    expect(err.retryable).toBe(true);
+    expect(err.message).toContain('balance');
+  });
+
+  it('still classifies an ordinary 401/403 with no billing language as AUTH_ERROR', () => {
+    const err = classifyError(
+      'novita',
+      fakeAxiosError(403, undefined, { code: 403, reason: 'INVALID_API_KEY', message: 'invalid API key' })
+    );
+    expect(err.code).toBe('AUTH_ERROR');
+  });
+
+  // Regression test: captured live from api.inference.net on a real
+  // account with no payment method on file. Previously 402 had no
+  // dedicated case and fell into the generic UNKNOWN bucket with just the
+  // raw axios "Request failed with status code 402" message, giving no
+  // indication this was a billing issue rather than an unexplained error.
+  it('classifies 402 as INSUFFICIENT_CREDITS and surfaces the provider message', () => {
+    const err = classifyError(
+      'inference',
+      fakeAxiosError(402, undefined, { message: 'Insufficient funds. Please add a payment method.' })
+    );
+    expect(err.code).toBe('INSUFFICIENT_CREDITS');
+    expect(err.retryable).toBe(true);
+    expect(err.message).toContain('payment required');
+  });
+
+  it('classifies 402 with no body using a sensible default message', () => {
+    const err = classifyError('inference', fakeAxiosError(402));
+    expect(err.code).toBe('INSUFFICIENT_CREDITS');
+    expect(err.message).toContain('payment required');
+  });
+
   it('classifies 500+ as SERVER_ERROR and retryable', () => {
     const err = classifyError('groq', fakeAxiosError(503));
     expect(err.code).toBe('SERVER_ERROR');
