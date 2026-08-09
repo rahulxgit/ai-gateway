@@ -186,9 +186,15 @@ export default function App() {
                 model={modelOverride}
                 onModelChange={setModelOverride}
               />
-              <div className="overflow-x-auto scrollbar-thin pb-1">
-                <HealthBar />
-              </div>
+              {/* HealthBar renders a single "N/M healthy" pill, not the
+                  horizontally-scrolling row of per-provider dots it used
+                  to be — no overflow-x wrapper needed here anymore. Kept
+                  wrapped previously, which had the side effect of clipping
+                  HealthBar's own dropdown: setting overflow-x to
+                  non-visible implicitly forces overflow-y to auto too
+                  (CSS overflow spec), so the dropdown's max-h-96 panel was
+                  being cut off inside this drawer. */}
+              <HealthBar />
             </div>
           )}
 

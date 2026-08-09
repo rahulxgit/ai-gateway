@@ -50,6 +50,9 @@ export function ProjectSwitcher({
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-md border border-hairline bg-panel-raised px-2 py-1 font-mono text-[11px] text-ink-muted transition hover:text-ink"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Select project"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-ok" style={{ opacity: activeProject ? 1 : 0.25 }} />
         {activeProject ? activeProject.name : 'no project'}
