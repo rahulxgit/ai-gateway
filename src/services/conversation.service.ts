@@ -114,19 +114,6 @@ export function saveMessage(
   return { id, sessionId, role, content, provider, model, createdAt: now };
 }
 
-export function saveIncomingMessages(sessionId: string, messages: ChatMessage[]): void {
-  const insert = db.prepare(
-    `INSERT INTO messages (id, session_id, role, content, provider, model, created_at)
-     VALUES (?, ?, ?, ?, NULL, NULL, ?)`
-  );
-  const now = new Date().toISOString();
-  const tx = db.transaction((msgs: ChatMessage[]) => {
-    for (const m of msgs) insert.run(uuid(), sessionId, m.role, m.content, now);
-  });
-  tx(messages);
-  touchSession(sessionId);
-}
-
 export function getSessionHistory(sessionId: string, limit?: number): ConversationRecord[] {
   const rows = limit
     ? (db
