@@ -42,7 +42,16 @@ export const chatRequestSchema = z.object({
     .optional(),
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
-  maxTokens: z.number().int().min(1).max(65536).optional(),
+  // 384000 matches DeepSeek's real maxOutputTokens ceiling (the highest of
+  // any configured provider — see PRICING_PER_1K_TOKENS/deepseek.adapter.ts).
+  // This was previously capped at 65536, which silently rejected valid
+  // long-output requests to DeepSeek with a 400 before they ever reached
+  // the adapter. Every adapter already clamps maxTokens down to its own
+  // real ceiling via Math.min(options.maxTokens ?? default, this.maxOutputTokens),
+  // so raising this bound only removes an artificial restriction below what
+  // routing already enforces correctly per-provider — it does not allow
+  // any adapter to actually exceed its true limit.
+  maxTokens: z.number().int().min(1).max(384000).optional(),
   stream: z.boolean().optional(),
 });
 
