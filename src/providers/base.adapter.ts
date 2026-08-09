@@ -18,7 +18,42 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
   const status = axiosErr?.response?.status;
 
   if (status === 401 || status === 403) {
+    // Some providers (confirmed live: novita) return 401/403 with a body
+    // like {"code":403,"reason":"NOT_ENOUGH_BALANCE","message":"not enough
+    // balance"} for an empty account, not for a bad key. Reusing an
+    // auth-failure classification here previously made a billing problem
+    // look identical to a broken API key in /health and logs — the two
+    // demand completely different fixes (top up funds vs. rotate the key)
+    // so they need to stay distinguishable.
+    const body = axiosErr.response?.data as
+      | { message?: string; reason?: string; error?: { message?: string } | string }
+      | undefined;
+    const msg =
+      body?.message ??
+      body?.reason ??
+      (typeof body?.error === 'string' ? body.error : body?.error?.message) ??
+      '';
+    if (/not enough balance|insufficient (credit|balance|funds)|credit balance|low balance|add (a )?payment method/i.test(msg)) {
+      return new ProviderError(provider, 'INSUFFICIENT_CREDITS', `${provider}: ${msg}`, status);
+    }
     return new ProviderError(provider, 'AUTH_ERROR', `${provider}: authentication failed`, status);
+  }
+  // 402 Payment Required is a direct billing signal (confirmed live:
+  // inference.net). Previously had no dedicated case and fell through to
+  // the generic UNKNOWN bucket with just the raw axios message, hiding
+  // the actual reason behind the failure.
+  if (status === 402) {
+    const body = axiosErr.response?.data as
+      | { message?: string; error?: { message?: string } | string }
+      | undefined;
+    const msg =
+      body?.message ?? (typeof body?.error === 'string' ? body.error : body?.error?.message) ?? '';
+    return new ProviderError(
+      provider,
+      'INSUFFICIENT_CREDITS',
+      `${provider}: payment required${msg ? ` — ${msg}` : ''}`,
+      status
+    );
   }
   // 412 is billing-account-suspension in disguise for at least one provider
   // in this gateway (Fireworks: "Account is suspended, possibly due to
