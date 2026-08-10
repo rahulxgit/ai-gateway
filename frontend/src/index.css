@@ -39,3 +39,17 @@
 .animate-pulse-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
+
+/* Respect the OS-level reduced-motion preference (WCAG 2.3.3 / brief
+   section 13). animate-pulse-dot is the only animation in the app,
+   used for status dots (degraded/rate-limited) and the "routing…"
+   indicator — for reduced-motion users it becomes a static
+   lower-opacity state instead of an infinite pulse, so the signal
+   (something is in-flight / degraded) is still visible without motion. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
