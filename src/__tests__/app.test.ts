@@ -91,6 +91,28 @@ describe('POST /chat validation', () => {
     expect(res.status).toBe(503);
     expect(res.body.error).not.toMatch(/Invalid request body/i);
   });
+
+  // Regression test: chatRequestSchema.maxTokens was previously capped at
+  // 65536, silently rejecting valid requests to DeepSeek (real ceiling
+  // 384,000) with a 400 before they ever reached the adapter's own correct
+  // per-provider clamping. A maxTokens value above the old cap but within
+  // DeepSeek's real ceiling must now pass validation and reach the router
+  // (503 no-providers-configured in this test env), not fail at 400.
+  it('accepts a maxTokens value above the old 65536 cap, up to DeepSeek\'s real 384000 ceiling', async () => {
+    const res = await request(app)
+      .post('/chat')
+      .send({ messages: [{ role: 'user', content: 'hi' }], maxTokens: 200000 });
+    expect(res.status).toBe(503);
+    expect(res.body.error).not.toMatch(/Invalid request body/i);
+  });
+
+  it('still rejects a maxTokens value above every provider\'s real ceiling', async () => {
+    const res = await request(app)
+      .post('/chat')
+      .send({ messages: [{ role: 'user', content: 'hi' }], maxTokens: 500000 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid request body');
+  });
 });
 
 describe('Project + workspace API', () => {
