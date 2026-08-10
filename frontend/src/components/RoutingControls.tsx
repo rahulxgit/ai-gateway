@@ -22,7 +22,7 @@ export function RoutingControls({
   const isFreeModelPreset = OPENROUTER_FREE_MODELS.some((m) => m.value === model);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+    <div className="flex flex-wrap items-center gap-2 font-mono text-[12px]">
       <select
         value={taskType}
         onChange={(e) => onTaskTypeChange(e.target.value as TaskType)}

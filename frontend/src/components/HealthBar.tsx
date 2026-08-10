@@ -72,7 +72,7 @@ export function HealthBar() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-md border border-hairline px-2.5 py-1 font-mono text-[11px] text-ink-muted transition hover:border-signal-dim hover:text-ink"
+        className="flex items-center gap-1.5 rounded-md border border-hairline px-2.5 py-1 font-mono text-[12px] text-ink-muted transition hover:border-signal-dim hover:text-ink"
         title="Provider health"
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -89,12 +89,12 @@ export function HealthBar() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 max-h-96 w-64 overflow-y-auto scrollbar-thin rounded-md border border-hairline bg-panel p-1.5 shadow-lg">
-          {sorted.length === 0 && <p className="px-2 py-1.5 text-[11px] text-ink-faint">No health data yet.</p>}
+        <div className="absolute right-0 top-full z-30 mt-1 max-h-96 w-64 max-w-[90vw] overflow-y-auto scrollbar-thin rounded-md border border-hairline bg-panel p-1.5 shadow-lg">
+          {sorted.length === 0 && <p className="px-2 py-1.5 text-[12px] text-ink-faint">No health data yet.</p>}
           {sorted.map((p) => (
             <div
               key={p.provider}
-              className="flex items-center gap-2 rounded px-2 py-1.5 text-[11px] text-ink-muted"
+              className="flex items-center gap-2 rounded px-2 py-1.5 text-[12px] text-ink-muted"
               title={p.lastError ?? p.status}
             >
               <span

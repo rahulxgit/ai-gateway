@@ -71,7 +71,7 @@ export function AnalyticsPanel({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
-              <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wide text-ink-faint">
+              <h3 className="mb-2 font-mono text-[12px] uppercase tracking-wide text-ink-faint">
                 By provider — last {windowHours}h
               </h3>
               <div className="space-y-1.5">

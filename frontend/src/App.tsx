@@ -220,7 +220,7 @@ export default function App() {
               <HealthBar />
               <button
                 onClick={() => setShowAnalytics(true)}
-                className="rounded-md border border-hairline px-2.5 py-1 font-mono text-[11px] text-ink-muted transition hover:border-signal-dim hover:text-signal"
+                className="rounded-md border border-hairline px-2.5 py-1 font-mono text-[12px] text-ink-muted transition hover:border-signal-dim hover:text-signal"
               >
                 analytics
               </button>
@@ -229,7 +229,7 @@ export default function App() {
         </header>
 
         {activeProject && (
-          <div className="flex items-center gap-2 overflow-x-auto border-b border-hairline bg-panel/60 px-3 py-1.5 font-mono text-[11px] text-ink-faint md:px-5">
+          <div className="flex items-center gap-2 overflow-x-auto border-b border-hairline bg-panel/60 px-3 py-1.5 font-mono text-[12px] text-ink-faint md:px-5">
             <span className="shrink-0 text-ok">●</span>
             <span className="shrink-0">working in project</span>
             <span className="shrink-0 text-ink-muted">{activeProject.name}</span>

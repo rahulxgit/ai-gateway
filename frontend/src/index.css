@@ -5,9 +5,23 @@
 @layer base {
   html, body, #root {
     height: 100%;
+    /* Use dvh where supported so mobile browser chrome (address bar
+       show/hide) doesn't cause the app shell to jump or clip content. */
+    min-height: 100dvh;
+  }
+  html {
+    /* Prevents Chrome/Safari on mobile from auto-boosting text size in
+       ways that break our own responsive layout (text-size-adjust would
+       otherwise scale text unpredictably on rotation/zoom). */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body {
     @apply bg-canvas text-ink font-sans antialiased;
+    /* Guards against any single wide element (long unbroken token, wide
+       table, etc.) forcing horizontal scroll/zoom-out on narrow viewports. */
+    overflow-x: hidden;
+    width: 100%;
   }
   ::selection {
     @apply bg-signal-dim text-ink;
@@ -19,6 +33,16 @@
   :focus-visible {
     outline: 2px solid #F0A339;
     outline-offset: 2px;
+  }
+  /* Any interactive text input rendered below 16px triggers iOS Safari to
+     zoom the whole page in on focus (and the resulting zoomed-in state is
+     what the "zoom out to read" complaint usually comes from once it
+     doesn't reset). Keeping form controls at >=16px avoids that trigger
+     entirely, on every mobile browser, not just Safari. */
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1rem);
   }
 }
 
