@@ -74,6 +74,9 @@ export function HealthBar() {
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-md border border-hairline px-2.5 py-1 font-mono text-[11px] text-ink-muted transition hover:border-signal-dim hover:text-ink"
         title="Provider health"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Provider health"
       >
         <span
           className={`h-1.5 w-1.5 rounded-full ${STATUS_COLOR[worstStatus]} ${

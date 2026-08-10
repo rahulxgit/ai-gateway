@@ -93,6 +93,9 @@ export function ProviderPicker({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-md border border-hairline bg-panel-raised px-2 py-1 text-ink-muted outline-none transition hover:text-ink focus:border-signal-dim"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Select provider"
       >
         {currentStatus && (
           <span
@@ -108,7 +111,10 @@ export function ProviderPicker({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-1 w-72 overflow-hidden rounded-md border border-hairline bg-panel shadow-lg">
+        <div
+          role="listbox"
+          className="absolute left-0 top-full z-30 mt-1 w-72 max-w-[90vw] overflow-hidden rounded-md border border-hairline bg-panel shadow-lg"
+        >
           <div className="border-b border-hairline p-1.5">
             <input
               ref={inputRef}
