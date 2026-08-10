@@ -49,7 +49,7 @@ export function ProjectSwitcher({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-md border border-hairline bg-panel-raised px-2 py-1 font-mono text-[11px] text-ink-muted transition hover:text-ink"
+        className="flex items-center gap-1.5 rounded-md border border-hairline bg-panel-raised px-2 py-1 font-mono text-[12px] text-ink-muted transition hover:text-ink"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Select project"

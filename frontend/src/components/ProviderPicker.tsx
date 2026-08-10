@@ -121,7 +121,7 @@ export function ProviderPicker({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="search providers…"
-              className="w-full rounded bg-panel-raised px-2 py-1 text-[11px] text-ink placeholder:text-ink-faint outline-none"
+              className="w-full rounded bg-panel-raised px-2 py-1 text-[12px] text-ink placeholder:text-ink-faint outline-none"
             />
           </div>
           <div className="max-h-72 overflow-y-auto scrollbar-thin py-1">
@@ -131,7 +131,7 @@ export function ProviderPicker({
                 onChange('auto');
                 setOpen(false);
               }}
-              className={`flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[11px] transition hover:bg-panel-raised ${
+              className={`flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] transition hover:bg-panel-raised ${
                 value === 'auto' ? 'text-signal' : 'text-ink-muted'
               }`}
             >
@@ -139,7 +139,7 @@ export function ProviderPicker({
               {value === 'auto' && <span>✓</span>}
             </button>
             {filtered.length === 0 && (
-              <p className="px-2.5 py-2 text-[11px] text-ink-faint">No providers match “{query}”.</p>
+              <p className="px-2.5 py-2 text-[12px] text-ink-faint">No providers match “{query}”.</p>
             )}
             {filtered.map((p) => {
               const meta = PROVIDER_META[p];
@@ -152,7 +152,7 @@ export function ProviderPicker({
                     onChange(p);
                     setOpen(false);
                   }}
-                  className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] transition hover:bg-panel-raised ${
+                  className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition hover:bg-panel-raised ${
                     value === p ? 'text-signal' : 'text-ink'
                   }`}
                 >

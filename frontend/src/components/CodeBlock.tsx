@@ -43,10 +43,10 @@ export function CodeBlock({
   return (
     <div className="not-prose my-2 overflow-hidden rounded-lg border border-hairline">
       <div className="flex items-center justify-between bg-panel px-3 py-1.5">
-        <span className="font-mono text-[11px] text-ink-faint">{language || 'code'}</span>
+        <span className="font-mono text-[12px] text-ink-faint">{language || 'code'}</span>
         <button
           onClick={copy}
-          className="flex items-center gap-1 rounded px-2 py-0.5 font-mono text-[11px] text-ink-muted transition hover:text-signal"
+          className="flex items-center gap-1 rounded px-2 py-0.5 font-mono text-[12px] text-ink-muted transition hover:text-signal"
         >
           {copied ? (
             <>

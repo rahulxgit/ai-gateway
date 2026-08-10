@@ -112,7 +112,7 @@ export function Composer({
             return (
               <div
                 key={a.id}
-                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[11px] ${
+                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[12px] ${
                   a.status === 'error'
                     ? 'border-danger/40 bg-danger/10 text-danger'
                     : a.status === 'uploading'
@@ -184,7 +184,7 @@ export function Composer({
           }}
           placeholder="Message the gateway…"
           rows={1}
-          className="max-h-48 flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] text-ink placeholder:text-ink-faint outline-none"
+          className="max-h-48 flex-1 resize-none bg-transparent px-1 py-1.5 text-base text-ink placeholder:text-ink-faint outline-none"
         />
         <button
           onClick={submit}

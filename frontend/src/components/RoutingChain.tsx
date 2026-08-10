@@ -45,7 +45,7 @@ export function RoutingChain({
   const switched = chain.length > 1;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+    <div className="flex flex-wrap items-center gap-1.5 font-mono text-[12px]">
       {failed.map((p) => (
         <span key={p} className="flex items-center gap-1">
           <span className="text-ink-faint line-through decoration-danger/70">{LABELS[p]}</span>
