@@ -22,11 +22,11 @@ export function RoutingControls({
   const isFreeModelPreset = OPENROUTER_FREE_MODELS.some((m) => m.value === model);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 font-mono text-[12px]">
+    <div className="flex flex-wrap items-center gap-1.5 font-mono text-[12px]">
       <select
         value={taskType}
         onChange={(e) => onTaskTypeChange(e.target.value as TaskType)}
-        className="rounded-md border border-hairline bg-panel-raised px-2 py-1 text-ink-muted outline-none transition hover:text-ink focus:border-signal-dim"
+        className="rounded-md border border-hairline bg-panel-raised px-1.5 py-1 text-ink-muted outline-none transition hover:text-ink focus:border-signal-dim"
       >
         {TASK_TYPES.map((t) => (
           <option key={t.value} value={t.value}>
