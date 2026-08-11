@@ -20,6 +20,7 @@ import {
   getOrCreateSession,
   historyAsChatMessages,
   saveMessage,
+  saveMessages,
   estimateSessionTokenCount,
   autoTitleSessionIfNeeded,
 } from './conversation.service';
@@ -173,9 +174,13 @@ export async function orchestrateChat(request: OrchestratedRequest): Promise<Orc
 
   // Persist the new user-facing message(s) now, before calling the
   // provider, so context is never lost even if the process crashes mid-call.
-  for (const m of request.messages.filter((m) => m.role !== 'system')) {
-    saveMessage(session.id, m.role, m.content);
-  }
+  // Batched in a single transaction (one INSERT per message + one
+  // touchSession) instead of N separate saveMessage calls, each of which
+  // was its own INSERT+UPDATE round trip.
+  saveMessages(
+    session.id,
+    request.messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }))
+  );
   const firstUserMsg = request.messages.find((m) => m.role === 'user');
   if (firstUserMsg) autoTitleSessionIfNeeded(session.id, firstUserMsg.content);
 
@@ -253,9 +258,10 @@ export async function orchestrateChatStream(
   const handoff = buildContextHandoff(request, session.id);
   const fullMessages = assembleFullMessages(request, handoff);
 
-  for (const m of request.messages.filter((m) => m.role !== 'system')) {
-    saveMessage(session.id, m.role, m.content);
-  }
+  saveMessages(
+    session.id,
+    request.messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }))
+  );
   const firstUserMsg = request.messages.find((m) => m.role === 'user');
   if (firstUserMsg) autoTitleSessionIfNeeded(session.id, firstUserMsg.content);
 

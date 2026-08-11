@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid';
+import type Database from 'better-sqlite3';
 import { db } from '../database/client';
 import { ChatMessage, ChatSession, ConversationRecord, ProviderName } from '../types';
 
@@ -104,14 +105,48 @@ export function saveMessage(
   provider: ProviderName | null = null,
   model: string | null = null
 ): ConversationRecord {
-  const id = uuid();
-  const now = new Date().toISOString();
-  db.prepare(
+  return saveMessages(sessionId, [{ role, content, provider, model }])[0];
+}
+
+// Batched variant of saveMessage for persisting several incoming turns at
+// once (e.g. the user message(s) on a request). A single db.transaction
+// wraps all inserts plus one touchSession update, instead of N separate
+// INSERT+UPDATE round trips — meaningfully cheaper for multi-message
+// requests and avoids recompiling the prepared statement on every call.
+// Lazily prepared (not at module load time) since migrations may not have
+// run yet when this module is first imported — tests in particular import
+// services before calling runMigrations() in beforeAll. Cached after first
+// use so repeated calls still avoid recompiling the statement.
+let insertMessageStmt: Database.Statement | null = null;
+let touchSessionStmt: Database.Statement | null = null;
+
+export function saveMessages(
+  sessionId: string,
+  messages: { role: ChatMessage['role']; content: string; provider?: ProviderName | null; model?: string | null }[]
+): ConversationRecord[] {
+  if (messages.length === 0) return [];
+  insertMessageStmt ??= db.prepare(
     `INSERT INTO messages (id, session_id, role, content, provider, model, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, sessionId, role, content, provider, model, now);
-  touchSession(sessionId);
-  return { id, sessionId, role, content, provider, model, createdAt: now };
+  );
+  touchSessionStmt ??= db.prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`);
+
+  const now = new Date().toISOString();
+  const records: ConversationRecord[] = [];
+
+  const tx = db.transaction(() => {
+    for (const m of messages) {
+      const id = uuid();
+      const provider = m.provider ?? null;
+      const model = m.model ?? null;
+      insertMessageStmt!.run(id, sessionId, m.role, m.content, provider, model, now);
+      records.push({ id, sessionId, role: m.role, content: m.content, provider, model, createdAt: now });
+    }
+    touchSessionStmt!.run(now, sessionId);
+  });
+  tx();
+
+  return records;
 }
 
 export function getSessionHistory(sessionId: string, limit?: number): ConversationRecord[] {
