@@ -58,11 +58,11 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 right-0 z-40 h-full shrink-0 border-l border-hairline bg-panel
+        className={`fixed inset-y-0 left-0 z-40 h-full shrink-0 border-r border-hairline bg-panel
           transition-transform duration-200 ease-out
-          lg:relative lg:z-auto lg:h-auto lg:translate-x-0 lg:transition-[width,opacity] lg:duration-200
-          ${open ? 'translate-x-0' : 'translate-x-full'}
-          ${open ? 'lg:w-72 lg:opacity-100' : 'lg:w-0 lg:overflow-hidden lg:opacity-0 lg:border-l-0'}
+          lg:relative lg:z-auto lg:order-first lg:h-auto lg:translate-x-0 lg:transition-[width,opacity] lg:duration-200
+          ${open ? 'translate-x-0' : '-translate-x-full'}
+          ${open ? 'lg:w-72 lg:opacity-100' : 'lg:w-0 lg:overflow-hidden lg:opacity-0 lg:border-r-0'}
         `}
       >
         <div className="flex h-full w-[85vw] max-w-80 flex-col lg:w-72">

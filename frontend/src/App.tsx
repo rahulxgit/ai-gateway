@@ -139,22 +139,10 @@ export default function App() {
         <header className="border-b border-hairline bg-panel">
           {/* Mobile compact header: title, analytics, sidebar toggle */}
           <div className="flex items-center justify-between gap-2 px-3 py-2.5 lg:hidden">
-            <span className="truncate font-mono text-xs font-semibold tracking-tight text-ink">
-              {activeProject ? activeProject.name : 'AI GATEWAY'}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setShowAnalytics(true)}
-                className="rounded-md border border-hairline p-2 text-ink-muted transition hover:text-signal"
-                aria-label="Analytics"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M4 20V10M12 20V4M20 20v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
+            <div className="flex min-w-0 items-center gap-2">
               <button
                 onClick={() => setSidebarOpen((o) => !o)}
-                className={`rounded-md border p-2 transition ${
+                className={`shrink-0 rounded-md border p-2 transition ${
                   sidebarOpen ? 'border-signal-dim text-signal' : 'border-hairline text-ink-muted hover:text-ink'
                 }`}
                 aria-label="Toggle sidebar"
@@ -163,7 +151,19 @@ export default function App() {
                   <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </button>
+              <span className="truncate font-mono text-xs font-semibold tracking-tight text-ink">
+                {activeProject ? activeProject.name : 'AI GATEWAY'}
+              </span>
             </div>
+            <button
+              onClick={() => setShowAnalytics(true)}
+              className="shrink-0 rounded-md border border-hairline p-2 text-ink-muted transition hover:text-signal"
+              aria-label="Analytics"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M4 20V10M12 20V4M20 20v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
           <div className="flex flex-wrap items-center gap-2 border-t border-hairline px-3 py-2 lg:hidden">
             <RoutingControls
@@ -182,6 +182,19 @@ export default function App() {
               convention). */}
           <div className="hidden flex-wrap items-center justify-between gap-y-2 px-5 py-3 lg:flex">
             <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <button
+                onClick={() => setSidebarOpen((o) => !o)}
+                className={`shrink-0 rounded-md border p-1.5 transition ${
+                  sidebarOpen ? 'border-signal-dim text-signal' : 'border-hairline text-ink-muted hover:text-ink'
+                }`}
+                aria-label="Toggle sidebar"
+                title="Toggle sidebar (chats & projects)"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                  <path d="M9 4v16" stroke="currentColor" strokeWidth="1.6" />
+                </svg>
+              </button>
               <span className="shrink-0 font-mono text-sm font-semibold tracking-tight text-ink">
                 AI GATEWAY
               </span>
@@ -210,19 +223,6 @@ export default function App() {
                 className="rounded-md border border-hairline px-2.5 py-1 font-mono text-[12px] text-ink-muted transition hover:border-signal-dim hover:text-signal"
               >
                 analytics
-              </button>
-              <button
-                onClick={() => setSidebarOpen((o) => !o)}
-                className={`rounded-md border p-1.5 transition ${
-                  sidebarOpen ? 'border-signal-dim text-signal' : 'border-hairline text-ink-muted hover:text-ink'
-                }`}
-                aria-label="Toggle sidebar"
-                title="Toggle sidebar (chats & projects)"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
-                  <path d="M15 4v16" stroke="currentColor" strokeWidth="1.6" />
-                </svg>
               </button>
             </div>
           </div>
