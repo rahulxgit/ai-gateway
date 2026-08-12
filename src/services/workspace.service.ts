@@ -16,20 +16,20 @@ interface FileRow {
 // single call to detectLanguage(), which runs once per row whenever
 // listFiles()/rowToFile() maps a whole project's files — needless
 // reallocation for a value that's always the same.
-const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
-  ts: 'typescript',
-  tsx: 'typescript',
-  js: 'javascript',
-  jsx: 'javascript',
-  json: 'json',
-  md: 'markdown',
-  css: 'css',
-  html: 'html',
-  py: 'python',
-  sql: 'sql',
-  yml: 'yaml',
-  yaml: 'yaml',
-};
+const EXTENSION_LANGUAGE_MAP = new Map<string, string>([
+  ['ts', 'typescript'],
+  ['tsx', 'typescript'],
+  ['js', 'javascript'],
+  ['jsx', 'javascript'],
+  ['json', 'json'],
+  ['md', 'markdown'],
+  ['css', 'css'],
+  ['html', 'html'],
+  ['py', 'python'],
+  ['sql', 'sql'],
+  ['yml', 'yaml'],
+  ['yaml', 'yaml'],
+]);
 
 function detectLanguage(filePath: string): string {
   // lastIndexOf instead of split('.').pop() — split allocates a full
@@ -38,7 +38,7 @@ function detectLanguage(filePath: string): string {
   // repeated per file on every listing.
   const dotIndex = filePath.lastIndexOf('.');
   const ext = dotIndex === -1 ? '' : filePath.slice(dotIndex + 1).toLowerCase();
-  return EXTENSION_LANGUAGE_MAP[ext] ?? 'text';
+  return EXTENSION_LANGUAGE_MAP.get(ext) ?? 'text';
 }
 
 function rowToFile(row: FileRow): ProjectFile {
