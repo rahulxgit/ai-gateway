@@ -200,18 +200,36 @@ export function restoreSnapshot(projectId: string, snapshotId: string): void {
       `UPDATE projects SET name = ?, goal = ?, current_task = ?, memory_json = ?, updated_at = ? WHERE id = ?`
     ).run(memory.name, memory.goal, memory.currentTask, JSON.stringify(memory), new Date().toISOString(), projectId);
 
-    // Prepared once outside the loop instead of recompiled on every
-    // iteration — better-sqlite3 explicitly recommends this pattern, and
-    // it matters for projects with many files.
-    const upsertFileStmt = db.prepare(
-      `INSERT INTO project_files (project_id, path, content, language, version, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(project_id, path) DO UPDATE SET
-         content = excluded.content, language = excluded.language,
-         version = excluded.version, updated_at = excluded.updated_at`
-    );
-    for (const f of files) {
-      upsertFileStmt.run(projectId, f.path, f.content, f.language ?? null, f.version, f.updatedAt);
+    if (files.length === 0) return;
+
+    // We construct a generalized prepared statement for chunks of 100
+    // so we don't re-prepare the statement multiple times for the same chunk size.
+    // This allows for bulk inserts to significantly improve restore performance.
+    const CHUNK_SIZE = 100;
+    const stmtCache = new Map<number, import('better-sqlite3').Statement>();
+
+    const getChunkStmt = (size: number) => {
+      let stmt = stmtCache.get(size);
+      if (stmt) return stmt;
+      const placeholders = Array(size).fill('(?, ?, ?, ?, ?, ?)').join(', ');
+      stmt = db.prepare(
+        `INSERT INTO project_files (project_id, path, content, language, version, updated_at)
+         VALUES ${placeholders}
+         ON CONFLICT(project_id, path) DO UPDATE SET
+           content = excluded.content, language = excluded.language,
+           version = excluded.version, updated_at = excluded.updated_at`
+      );
+      stmtCache.set(size, stmt);
+      return stmt;
+    };
+
+    for (let i = 0; i < files.length; i += CHUNK_SIZE) {
+      const chunk = files.slice(i, i + CHUNK_SIZE);
+      const values = [];
+      for (const f of chunk) {
+         values.push(projectId, f.path, f.content, f.language ?? null, f.version, f.updatedAt);
+      }
+      getChunkStmt(chunk.length).run(...values);
     }
   });
   tx();
