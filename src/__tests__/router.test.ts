@@ -1,4 +1,4 @@
-import { ProviderError, ProviderName } from '../types';
+import { ProviderAdapterOptions, ProviderError, ProviderName, ProviderResponse } from '../types';
 
 // Mock the provider registry so we control exactly which providers are
 // "configured" and how each one behaves, without any real network calls.
@@ -12,13 +12,22 @@ jest.mock('../providers/registry', () => {
 });
 
 import { listConfiguredProviders, getProvider } from '../providers/registry';
-import { routeChat, AllProvidersFailedError } from '../services/router.service';
+import { routeChat, routeChatStream, AllProvidersFailedError } from '../services/router.service';
 import { recordSuccess } from '../services/health.service';
 
-function mockAdapter(name: ProviderName, impl: (options: any) => Promise<any>) {
+// supportsVision defaults to true so most tests (which don't care about
+// vision routing) don't need it; the few vision-specific tests below
+// override it via the options param, avoiding the `as any` casts that
+// were previously needed to bolt the property on after construction.
+function mockAdapter(
+  name: ProviderName,
+  impl: (options: ProviderAdapterOptions) => Promise<ProviderResponse>,
+  options: { supportsVision?: boolean } = {}
+) {
   return {
     name,
     defaultModel: 'test-model',
+    supportsVision: options.supportsVision ?? true,
     isConfigured: () => true,
     chat: jest.fn(impl),
     chatStream: jest.fn(),
@@ -151,15 +160,16 @@ describe('routeChat failover', () => {
       latencyMs: 20,
       estimatedCostUsd: 0.0001,
     }));
-    const groq = mockAdapter('groq', async () => {
-      throw new Error('groq should never be called for a vision request');
-    });
+    const groq = mockAdapter(
+      'groq',
+      async () => {
+        throw new Error('groq should never be called for a vision request');
+      },
+      { supportsVision: false }
+    );
     const anthropic = mockAdapter('anthropic', async () => {
       throw new Error('anthropic should not be reached since gemini succeeds first');
     });
-    (gemini as any).supportsVision = true;
-    (groq as any).supportsVision = false;
-    (anthropic as any).supportsVision = true;
 
     (getProvider as jest.Mock).mockImplementation(
       (name: ProviderName) => ({ gemini, groq, anthropic }[name as 'gemini' | 'groq' | 'anthropic'])
@@ -181,10 +191,13 @@ describe('routeChat failover', () => {
 
   it('throws a vision-specific error when no configured provider supports images', async () => {
     (listConfiguredProviders as jest.Mock).mockReturnValue(['groq']);
-    const groq = mockAdapter('groq', async () => {
-      throw new Error('should never be called');
-    });
-    (groq as any).supportsVision = false;
+    const groq = mockAdapter(
+      'groq',
+      async () => {
+        throw new Error('should never be called');
+      },
+      { supportsVision: false }
+    );
     (getProvider as jest.Mock).mockImplementation(() => groq);
 
     await expect(
@@ -194,5 +207,95 @@ describe('routeChat failover', () => {
         ],
       })
     ).rejects.toThrow('No vision-capable providers are configured');
+  });
+});
+
+describe('routeChatStream failover / error paths', () => {
+  beforeEach(() => {
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'anthropic']);
+    // health.service is a shared module-level singleton across the whole
+    // test file — a prior test's recordFailure() would otherwise leak in
+    // here and reorder candidates ahead of listConfiguredProviders'
+    // configured order via the healthy/degraded split in candidateOrder().
+    // Force both back to a known-healthy, equal-footing state so these
+    // tests are deterministic regardless of test execution order.
+    recordSuccess('gemini', 10);
+    recordSuccess('anthropic', 10);
+  });
+
+  it('fails over to the next provider if a provider errors before emitting any chunk', async () => {
+    const gemini = {
+      name: 'gemini' as ProviderName,
+      defaultModel: 'test-model',
+      supportsVision: true,
+      isConfigured: () => true,
+      chat: jest.fn(),
+      chatStream: jest.fn(async () => {
+        throw new ProviderError('gemini', 'RATE_LIMITED', 'rate limited');
+      }),
+    };
+    const anthropic = {
+      name: 'anthropic' as ProviderName,
+      defaultModel: 'test-model',
+      supportsVision: true,
+      isConfigured: () => true,
+      chat: jest.fn(),
+      chatStream: jest.fn(async (_options: ProviderAdapterOptions, onChunk: (c: unknown) => void) => {
+        onChunk({ provider: 'anthropic', model: 'test-model', delta: 'hi', done: false });
+        return {
+          provider: 'anthropic',
+          model: 'test-model',
+          content: 'hi',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          latencyMs: 5,
+          estimatedCostUsd: 0.0001,
+        } as ProviderResponse;
+      }),
+    };
+    (getProvider as jest.Mock).mockImplementation(
+      (name: ProviderName) => ({ gemini, anthropic }[name as 'gemini' | 'anthropic'])
+    );
+
+    const chunks: unknown[] = [];
+    const result = await routeChatStream(
+      { messages: [{ role: 'user', content: 'hello' }] },
+      (chunk) => chunks.push(chunk)
+    );
+
+    expect(result.response.provider).toBe('anthropic');
+    expect(result.failoverChain).toEqual(['gemini', 'anthropic']);
+    expect(chunks).toHaveLength(1);
+  });
+
+  it('surfaces AllProvidersFailedError instead of silently switching once a chunk has already reached the client', async () => {
+    const gemini = {
+      name: 'gemini' as ProviderName,
+      defaultModel: 'test-model',
+      supportsVision: true,
+      isConfigured: () => true,
+      chat: jest.fn(),
+      chatStream: jest.fn(async (_options: ProviderAdapterOptions, onChunk: (c: unknown) => void) => {
+        onChunk({ provider: 'gemini', model: 'test-model', delta: 'partial', done: false });
+        throw new ProviderError('gemini', 'SERVER_ERROR', 'died mid-stream');
+      }),
+    };
+    const anthropic = {
+      name: 'anthropic' as ProviderName,
+      defaultModel: 'test-model',
+      supportsVision: true,
+      isConfigured: () => true,
+      chat: jest.fn(),
+      chatStream: jest.fn(async () => {
+        throw new Error('anthropic should never be reached — mid-stream failures must not fail over');
+      }),
+    };
+    (getProvider as jest.Mock).mockImplementation(
+      (name: ProviderName) => ({ gemini, anthropic }[name as 'gemini' | 'anthropic'])
+    );
+
+    await expect(
+      routeChatStream({ messages: [{ role: 'user', content: 'hello' }] }, () => {})
+    ).rejects.toBeInstanceOf(AllProvidersFailedError);
+    expect(anthropic.chatStream).not.toHaveBeenCalled();
   });
 });

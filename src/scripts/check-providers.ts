@@ -99,9 +99,9 @@ async function checkOne(name: ProviderName) {
 
     // 3. Fuzzy-match candidates
     const ids: string[] = Array.isArray(data?.data)
-      ? data.data.map((m: any) => (typeof m === 'string' ? m : m?.id)).filter(Boolean)
+      ? data.data.map((m: unknown) => (typeof m === 'string' ? m : (m as { id?: string })?.id)).filter(Boolean)
       : Array.isArray(data)
-        ? data.map((m: any) => (typeof m === 'string' ? m : m?.id)).filter(Boolean)
+        ? data.map((m: unknown) => (typeof m === 'string' ? m : (m as { id?: string })?.id)).filter(Boolean)
         : [];
 
     if (ids.length) {

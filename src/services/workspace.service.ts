@@ -12,23 +12,33 @@ interface FileRow {
   updated_at: string;
 }
 
+// Hoisted to module scope: previously this literal was recreated on every
+// single call to detectLanguage(), which runs once per row whenever
+// listFiles()/rowToFile() maps a whole project's files — needless
+// reallocation for a value that's always the same.
+const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
+  ts: 'typescript',
+  tsx: 'typescript',
+  js: 'javascript',
+  jsx: 'javascript',
+  json: 'json',
+  md: 'markdown',
+  css: 'css',
+  html: 'html',
+  py: 'python',
+  sql: 'sql',
+  yml: 'yaml',
+  yaml: 'yaml',
+};
+
 function detectLanguage(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
-  const map: Record<string, string> = {
-    ts: 'typescript',
-    tsx: 'typescript',
-    js: 'javascript',
-    jsx: 'javascript',
-    json: 'json',
-    md: 'markdown',
-    css: 'css',
-    html: 'html',
-    py: 'python',
-    sql: 'sql',
-    yml: 'yaml',
-    yaml: 'yaml',
-  };
-  return map[ext] ?? 'text';
+  // lastIndexOf instead of split('.').pop() — split allocates a full
+  // array of every dot-separated segment just to take the last one; for
+  // paths with several dots (e.g. "a.b.c.test.ts") that's wasted work
+  // repeated per file on every listing.
+  const dotIndex = filePath.lastIndexOf('.');
+  const ext = dotIndex === -1 ? '' : filePath.slice(dotIndex + 1).toLowerCase();
+  return EXTENSION_LANGUAGE_MAP[ext] ?? 'text';
 }
 
 function rowToFile(row: FileRow): ProjectFile {

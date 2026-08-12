@@ -1,5 +1,5 @@
 import { db, runMigrations } from '../database/client';
-import { recordAnalytics, getAnalyticsSummary } from '../services/analytics.service';
+import { recordAnalytics, getAnalyticsSummary, invalidateAnalyticsCache } from '../services/analytics.service';
 
 beforeAll(() => {
   runMigrations();
@@ -7,6 +7,12 @@ beforeAll(() => {
 
 beforeEach(() => {
   db.prepare('DELETE FROM analytics').run();
+  // Rows above are deleted directly via SQL, bypassing recordAnalytics()'s
+  // own cache invalidation — the short-TTL analytics cache added for
+  // perf reasons has no way to know about that delete, so it must be
+  // cleared explicitly here or a prior test's cached summary could leak
+  // into this one.
+  invalidateAnalyticsCache();
 });
 
 function insertAt(hoursAgo: number, overrides: Partial<Parameters<typeof recordAnalytics>[0]> = {}) {

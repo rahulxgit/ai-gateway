@@ -68,6 +68,34 @@ describe('extractUpload', () => {
     expect(result.kind).toBe('unsupported');
     expect(result.extractedText).toBeNull();
   });
+
+  it('reads recognized text extensions even when the mimeType is generic (e.g. octet-stream)', async () => {
+    const buf = Buffer.from('const x = 1;');
+    const result = await extractUpload(buf, 'script.ts', 'application/octet-stream');
+    expect(result.kind).toBe('text');
+    expect(result.extractedText).toBe('const x = 1;');
+  });
+
+  it('treats any text/* mimeType as text even with an unrecognized extension', async () => {
+    const buf = Buffer.from('some log lines');
+    const result = await extractUpload(buf, 'output.weirdext', 'text/plain');
+    expect(result.kind).toBe('text');
+    expect(result.extractedText).toBe('some log lines');
+  });
+
+  it('captures filename, mimeType, and byte size on every result kind', async () => {
+    const buf = Buffer.from('hello');
+    const result = await extractUpload(buf, 'notes.txt', 'text/plain');
+    expect(result.filename).toBe('notes.txt');
+    expect(result.mimeType).toBe('text/plain');
+    expect(result.sizeBytes).toBe(buf.length);
+  });
+
+  it('trims surrounding whitespace from extracted plain text', async () => {
+    const buf = Buffer.from('\n\n  padded content  \n\n');
+    const result = await extractUpload(buf, 'notes.txt', 'text/plain');
+    expect(result.extractedText).toBe('padded content');
+  });
 });
 
 describe('truncateExtractedText', () => {
@@ -82,5 +110,25 @@ describe('truncateExtractedText', () => {
     const { text, truncated } = truncateExtractedText(long);
     expect(truncated).toBe(true);
     expect(text.length).toBeLessThan(long.length);
+  });
+
+  it('leaves text exactly at the 40,000-char limit unchanged', () => {
+    const exact = 'a'.repeat(40_000);
+    const { text, truncated } = truncateExtractedText(exact);
+    expect(truncated).toBe(false);
+    expect(text).toBe(exact);
+  });
+
+  it('truncates text one character over the limit to exactly the limit', () => {
+    const overByOne = 'a'.repeat(40_001);
+    const { text, truncated } = truncateExtractedText(overByOne);
+    expect(truncated).toBe(true);
+    expect(text.length).toBe(40_000);
+  });
+
+  it('handles empty input without truncating', () => {
+    const { text, truncated } = truncateExtractedText('');
+    expect(text).toBe('');
+    expect(truncated).toBe(false);
   });
 });

@@ -83,7 +83,10 @@ export function errorHandler(
   err: unknown,
   req: Request,
   res: Response,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Unused but required: Express only recognizes a handler as an error
+  // handler (vs. a normal middleware) if it declares exactly 4 params.
+  // No eslint-disable needed here — .eslintrc.json's no-unused-vars rule
+  // already has `argsIgnorePattern: "^_"`, which covers this.
   _next: NextFunction
 ) {
   const message = err instanceof Error ? err.message : 'Unknown error';
