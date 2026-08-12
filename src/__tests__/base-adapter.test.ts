@@ -1,4 +1,4 @@
-import { AxiosError } from 'axios';
+import { AxiosError, AxiosResponse } from 'axios';
 import { classifyError, createSseFrameParser, estimateCost } from '../providers/base.adapter';
 import { ProviderError } from '../types';
 
@@ -7,7 +7,7 @@ function fakeAxiosError(status?: number, code?: string, data?: unknown): AxiosEr
     isAxiosError: true,
     code,
     message: code === 'ECONNABORTED' ? 'timeout of 30000ms exceeded' : 'Request failed',
-    response: status ? ({ status, data } as any) : undefined,
+    response: status ? ({ status, data } as Partial<AxiosResponse> as AxiosResponse) : undefined,
     toJSON: () => ({}),
     name: 'AxiosError',
   } as AxiosError;

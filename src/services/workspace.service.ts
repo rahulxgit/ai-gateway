@@ -12,23 +12,33 @@ interface FileRow {
   updated_at: string;
 }
 
+// Hoisted to module scope: previously this literal was recreated on every
+// single call to detectLanguage(), which runs once per row whenever
+// listFiles()/rowToFile() maps a whole project's files — needless
+// reallocation for a value that's always the same.
+const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
+  ts: 'typescript',
+  tsx: 'typescript',
+  js: 'javascript',
+  jsx: 'javascript',
+  json: 'json',
+  md: 'markdown',
+  css: 'css',
+  html: 'html',
+  py: 'python',
+  sql: 'sql',
+  yml: 'yaml',
+  yaml: 'yaml',
+};
+
 function detectLanguage(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
-  const map: Record<string, string> = {
-    ts: 'typescript',
-    tsx: 'typescript',
-    js: 'javascript',
-    jsx: 'javascript',
-    json: 'json',
-    md: 'markdown',
-    css: 'css',
-    html: 'html',
-    py: 'python',
-    sql: 'sql',
-    yml: 'yaml',
-    yaml: 'yaml',
-  };
-  return map[ext] ?? 'text';
+  // lastIndexOf instead of split('.').pop() — split allocates a full
+  // array of every dot-separated segment just to take the last one; for
+  // paths with several dots (e.g. "a.b.c.test.ts") that's wasted work
+  // repeated per file on every listing.
+  const dotIndex = filePath.lastIndexOf('.');
+  const ext = dotIndex === -1 ? '' : filePath.slice(dotIndex + 1).toLowerCase();
+  return EXTENSION_LANGUAGE_MAP[ext] ?? 'text';
 }
 
 function rowToFile(row: FileRow): ProjectFile {
@@ -190,14 +200,18 @@ export function restoreSnapshot(projectId: string, snapshotId: string): void {
       `UPDATE projects SET name = ?, goal = ?, current_task = ?, memory_json = ?, updated_at = ? WHERE id = ?`
     ).run(memory.name, memory.goal, memory.currentTask, JSON.stringify(memory), new Date().toISOString(), projectId);
 
+    // Prepared once outside the loop instead of recompiled on every
+    // iteration — better-sqlite3 explicitly recommends this pattern, and
+    // it matters for projects with many files.
+    const upsertFileStmt = db.prepare(
+      `INSERT INTO project_files (project_id, path, content, language, version, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(project_id, path) DO UPDATE SET
+         content = excluded.content, language = excluded.language,
+         version = excluded.version, updated_at = excluded.updated_at`
+    );
     for (const f of files) {
-      db.prepare(
-        `INSERT INTO project_files (project_id, path, content, language, version, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(project_id, path) DO UPDATE SET
-           content = excluded.content, language = excluded.language,
-           version = excluded.version, updated_at = excluded.updated_at`
-      ).run(projectId, f.path, f.content, f.language ?? null, f.version, f.updatedAt);
+      upsertFileStmt.run(projectId, f.path, f.content, f.language ?? null, f.version, f.updatedAt);
     }
   });
   tx();

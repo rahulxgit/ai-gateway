@@ -27,15 +27,19 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
     useSystemFonts: false,
   }).promise;
 
-  const pages: string[] = [];
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = content.items
-      .map((item) => ('str' in item ? item.str : ''))
-      .join(' ');
-    pages.push(pageText);
-  }
+  // Pages are independent of one another, so fetch+parse them concurrently
+  // via Promise.all instead of one at a time — pdf.js can process multiple
+  // pages in parallel, which meaningfully speeds up extraction for large
+  // PDFs. Results are collected in an array indexed by page number so
+  // final order is preserved regardless of completion order.
+  const pageNumbers = Array.from({ length: doc.numPages }, (_, i) => i + 1);
+  const pages = await Promise.all(
+    pageNumbers.map(async (i) => {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      return content.items.map((item) => ('str' in item ? item.str : '')).join(' ');
+    })
+  );
   return pages.join('\n\n');
 }
 

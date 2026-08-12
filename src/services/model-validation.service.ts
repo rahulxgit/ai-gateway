@@ -13,7 +13,28 @@ export interface ModelValidationSummary extends ModelAvailabilityResult {
   provider: ProviderName;
 }
 
+// Each call fires a real concurrent network request to every configured
+// provider's /models endpoint. That's fine once at startup, but
+// GET /health/models can be polled (uptime pingers, dashboards, or repeat
+// manual checks) — without caching, every poll re-hits every provider's
+// live API even though model catalogs don't change on a per-request
+// basis. A short TTL cache avoids redundant concurrent network calls while
+// still catching a real deprecation within a few minutes.
+const MODEL_VALIDATION_CACHE_TTL_MS = 5 * 60 * 1000;
+let cachedResults: ModelValidationSummary[] | null = null;
+let cachedAt = 0;
+
+export function invalidateModelValidationCache(): void {
+  cachedResults = null;
+  cachedAt = 0;
+}
+
 export async function validateConfiguredModels(): Promise<ModelValidationSummary[]> {
+  const now = Date.now();
+  if (cachedResults && now - cachedAt < MODEL_VALIDATION_CACHE_TTL_MS) {
+    return cachedResults;
+  }
+
   const configured = listConfiguredProviders();
 
   const results = await Promise.all(
@@ -41,5 +62,7 @@ export async function validateConfiguredModels(): Promise<ModelValidationSummary
     });
   }
 
+  cachedResults = results;
+  cachedAt = now;
   return results;
 }

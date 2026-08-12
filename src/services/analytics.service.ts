@@ -38,6 +38,25 @@ function toRecord(row: AnalyticsRow): AnalyticsRecord {
   };
 }
 
+export type AnalyticsSummary = ReturnType<typeof computeAnalyticsSummary>;
+
+// getAnalyticsSummary runs 3 aggregation queries (full table scans over
+// `analytics` bounded by the 24h window) on every call. The frontend
+// AnalyticsPanel polls GET /analytics every 15s per open panel, and this
+// runs on every call with no caching — heavy and unnecessary since the
+// numbers don't need sub-5-second freshness for a dashboard. A short TTL
+// cache avoids recomputing on every poll while staying close enough to
+// real-time; it's invalidated immediately whenever a new analytics row is
+// recorded, so a fresh request right after activity still sees it.
+const ANALYTICS_CACHE_TTL_MS = 5_000;
+let cachedSummary: AnalyticsSummary | null = null;
+let cachedAt = 0;
+
+export function invalidateAnalyticsCache(): void {
+  cachedSummary = null;
+  cachedAt = 0;
+}
+
 export function recordAnalytics(input: {
   sessionId?: string | null;
   provider: ProviderName;
@@ -73,9 +92,10 @@ export function recordAnalytics(input: {
     input.failoverFrom ?? null,
     new Date().toISOString()
   );
+  invalidateAnalyticsCache();
 }
 
-export function getAnalyticsSummary() {
+function computeAnalyticsSummary() {
   // All summary figures are a rolling 24-hour window, not lifetime totals.
   // "Rolling" means it self-resets continuously: a request that happened
   // 24 hours and 1 minute ago simply falls out of every query below on its
@@ -131,6 +151,16 @@ export function getAnalyticsSummary() {
     windowHours: 24,
     windowStart,
   };
+}
+
+export function getAnalyticsSummary() {
+  const now = Date.now();
+  if (cachedSummary && now - cachedAt < ANALYTICS_CACHE_TTL_MS) {
+    return cachedSummary;
+  }
+  cachedSummary = computeAnalyticsSummary();
+  cachedAt = now;
+  return cachedSummary;
 }
 
 export function getRecentAnalytics(limit = 50): AnalyticsRecord[] {
