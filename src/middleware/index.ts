@@ -5,6 +5,7 @@ import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { PROVIDER_NAMES } from '../types';
 import { GatewayRequestBudgetExceededError } from '../services/router.service';
+import { DailyCostBudgetExceededError } from '../services/orchestrator.service';
 
 export const apiRateLimiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
@@ -16,8 +17,6 @@ export const apiRateLimiter = rateLimit({
 
 const imageAttachmentSchema = z.object({
   mimeType: z.string().regex(/^image\//, 'mimeType must be an image/* type'),
-  // Base64 for a ~15MB image is roughly 20M characters — cap generously
-  // above that so legitimate uploads pass but we still bound payload size.
   base64: z.string().min(1).max(25_000_000),
 });
 
@@ -34,24 +33,9 @@ export const chatRequestSchema = z.object({
   taskType: z
     .enum(['coding', 'reasoning', 'creative', 'fast', 'cheap', 'large-context', 'general'])
     .optional(),
-  forceProvider: z
-    // Derived from PROVIDER_NAMES (src/types/index.ts) rather than a
-    // hand-copied literal list — this is the exact list every adapter is
-    // registered under, so a provider can never be "live" in the registry
-    // but still rejected here.
-    .enum(PROVIDER_NAMES)
-    .optional(),
+  forceProvider: z.enum(PROVIDER_NAMES).optional(),
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
-  // 384000 matches DeepSeek's real maxOutputTokens ceiling (the highest of
-  // any configured provider — see PRICING_PER_1K_TOKENS/deepseek.adapter.ts).
-  // This was previously capped at 65536, which silently rejected valid
-  // long-output requests to DeepSeek with a 400 before they ever reached
-  // the adapter. Every adapter already clamps maxTokens down to its own
-  // real ceiling via Math.min(options.maxTokens ?? default, this.maxOutputTokens),
-  // so raising this bound only removes an artificial restriction below what
-  // routing already enforces correctly per-provider — it does not allow
-  // any adapter to actually exceed its true limit.
   maxTokens: z.number().int().min(1).max(384000).optional(),
   stream: z.boolean().optional(),
 });
@@ -71,11 +55,9 @@ export function validateBody(schema: z.ZodSchema) {
   };
 }
 
-// Strips characters commonly used in prompt-injection-via-HTML or control
-// sequences from free-text fields before they're persisted or forwarded.
 export function sanitizeInput(req: Request, _res: Response, next: NextFunction) {
   if (typeof req.body === 'object' && req.body !== null) {
-    JSON.stringify(req.body); // throws on circular refs before we do anything else
+    JSON.stringify(req.body);
   }
   next();
 }
@@ -84,15 +66,14 @@ export function errorHandler(
   err: unknown,
   req: Request,
   res: Response,
-  // Unused but required: Express only recognizes a handler as an error
-  // handler (vs. a normal middleware) if it declares exactly 4 params.
-  // No eslint-disable needed here — .eslintrc.json's no-unused-vars rule
-  // already has `argsIgnorePattern: "^_"`, which covers this.
   _next: NextFunction
 ) {
   const message = err instanceof Error ? err.message : 'Unknown error';
   logger.error('Unhandled request error', { path: req.path, error: message });
 
+  if (err instanceof DailyCostBudgetExceededError) {
+    return res.status(429).json({ error: message });
+  }
   if (err instanceof GatewayRequestBudgetExceededError) {
     return res.status(504).json({ error: message });
   }
