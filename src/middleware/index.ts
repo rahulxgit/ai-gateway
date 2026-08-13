@@ -10,18 +10,30 @@ import { DailyCostBudgetExceededError } from '../services/orchestrator.service';
 const isChatRequest = (req: Request): boolean =>
   req.method === 'POST' && (req.path === '/chat' || req.path === '/chat/stream');
 
-export const apiReadRateLimiter = rateLimit({
+const isGenerousReadRequest = (req: Request): boolean =>
+  req.method === 'GET' && (req.path === '/health' || req.path === '/providers');
+
+export const apiRateLimiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
-  max: env.readRateLimitMax,
+  max: env.rateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: isChatRequest,
+  skip: (req) => isChatRequest(req) || isGenerousReadRequest(req),
+  message: { error: 'Too many requests, please slow down.' },
+});
+
+export const apiReadRateLimiter = rateLimit({
+  windowMs: env.rateLimitWindowMs,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !isGenerousReadRequest(req),
   message: { error: 'Too many requests, please slow down.' },
 });
 
 export const apiChatRateLimiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
-  max: env.chatRateLimitMax,
+  max: env.rateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => !isChatRequest(req),
