@@ -35,16 +35,17 @@ describe('chat.controller', () => {
   });
 
   describe('postChat', () => {
-    it('forwards the request body to orchestrateChat and returns its result as JSON', async () => {
+    it('forwards the request body and correlation ID to orchestrateChat and returns its result as JSON', async () => {
       const fakeResult = { sessionId: 's1', content: 'hi', provider: 'gemini', model: 'gemini-3.1-flash-lite' };
+      const correlationId = 'test-correlation-id';
       (orchestrateChat as jest.Mock).mockResolvedValue(fakeResult);
 
-      const req = { body: { messages: [{ role: 'user', content: 'hi' }] } } as Request;
+      const req = { body: { messages: [{ role: 'user', content: 'hi' }] }, correlationId } as Request;
       const res = mockRes();
 
       await postChat(req, res);
 
-      expect(orchestrateChat).toHaveBeenCalledWith(req.body);
+      expect(orchestrateChat).toHaveBeenCalledWith(req.body, correlationId);
       expect(res.json).toHaveBeenCalledWith(fakeResult);
     });
 
@@ -52,7 +53,7 @@ describe('chat.controller', () => {
       const err = new Error('All configured providers failed to fulfill the request');
       (orchestrateChat as jest.Mock).mockRejectedValue(err);
 
-      const req = { body: { messages: [{ role: 'user', content: 'hi' }] } } as Request;
+      const req = { body: { messages: [{ role: 'user', content: 'hi' }] }, correlationId: 'test-correlation-id' } as Request;
       const res = mockRes();
 
       await expect(postChat(req, res)).rejects.toThrow(err.message);
