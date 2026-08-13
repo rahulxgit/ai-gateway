@@ -5,54 +5,84 @@
 @layer base {
   html, body, #root {
     height: 100%;
-    /* Use dvh where supported so mobile browser chrome (address bar
-       show/hide) doesn't cause the app shell to jump or clip content. */
     min-height: 100dvh;
   }
+
   html {
-    /* Prevents Chrome/Safari on mobile from auto-boosting text size in
-       ways that break our own responsive layout (text-size-adjust would
-       otherwise scale text unpredictably on rotation/zoom). */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    color-scheme: dark;
   }
+
   body {
     @apply bg-canvas text-ink font-sans antialiased;
-    /* Guards against any single wide element (long unbroken token, wide
-       table, etc.) forcing horizontal scroll/zoom-out on narrow viewports. */
     overflow-x: hidden;
     width: 100%;
   }
+
   ::selection {
     @apply bg-signal-dim text-ink;
   }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: #282B31 transparent;
   }
+
   :focus-visible {
     outline: 2px solid #F0A339;
     outline-offset: 2px;
   }
-  /* Any interactive text input rendered below 16px triggers iOS Safari to
-     zoom the whole page in on focus (and the resulting zoomed-in state is
-     what the "zoom out to read" complaint usually comes from once it
-     doesn't reset). Keeping form controls at >=16px avoids that trigger
-     entirely, on every mobile browser, not just Safari. */
+
   input,
   select,
-  textarea {
+  textarea,
+  button {
     font-size: max(16px, 1rem);
+  }
+
+  button,
+  select,
+  input,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  .icon-button {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-hairline bg-panel/60 text-ink-muted transition duration-150 hover:border-signal-dim hover:bg-panel-raised hover:text-ink active:scale-[0.98];
+  }
+
+  .icon-button-active {
+    @apply border-signal-dim/80 bg-signal/10 text-signal;
+  }
+
+  .brand-mark {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-lg border border-signal-dim/60 bg-signal/10 font-mono text-[10px] font-bold tracking-tight text-signal;
+  }
+
+  .surface-hover {
+    @apply transition duration-150 hover:border-hairline/90 hover:bg-panel-raised;
   }
 }
 
 @layer utilities {
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
   }
+
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background: #282B31;
-    border-radius: 4px;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #3A3E45;
+    background-clip: padding-box;
   }
 }
 
@@ -60,20 +90,21 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+
 .animate-pulse-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
 
-/* Respect the OS-level reduced-motion preference (WCAG 2.3.3 / brief
-   section 13). animate-pulse-dot is the only animation in the app,
-   used for status dots (degraded/rate-limited) and the "routing…"
-   indicator — for reduced-motion users it becomes a static
-   lower-opacity state instead of an infinite pulse, so the signal
-   (something is in-flight / degraded) is still visible without motion. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-pulse-dot {
-    animation: none;
-    opacity: 0.6;
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .animate-pulse-dot,
+  .animate-ping {
+    animation: none !important;
   }
 }
-
