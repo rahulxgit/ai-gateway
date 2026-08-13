@@ -162,6 +162,7 @@ describe('404 handler', () => {
   it('returns a structured 404 for unknown routes', async () => {
     const res = await request(app).get('/definitely-not-a-route');
     expect(res.status).toBe(404);
+    expect(res.body.error).toContain('Not found');
   });
 });
 
