@@ -7,11 +7,13 @@ import { PROVIDER_NAMES } from '../types';
 import { GatewayRequestBudgetExceededError } from '../services/router.service';
 import { DailyCostBudgetExceededError } from '../services/orchestrator.service';
 
+const requestPath = (req: Request): string => `${req.baseUrl}${req.path}`;
+
 const isChatRequest = (req: Request): boolean =>
-  req.method === 'POST' && (req.path === '/chat' || req.path === '/chat/stream');
+  req.method === 'POST' && (requestPath(req) === '/chat' || requestPath(req) === '/chat/stream');
 
 const isGenerousReadRequest = (req: Request): boolean =>
-  req.method === 'GET' && (req.path === '/health' || req.path === '/providers');
+  req.method === 'GET' && (requestPath(req) === '/health' || requestPath(req) === '/providers');
 
 export const apiRateLimiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
