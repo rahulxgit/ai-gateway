@@ -1,5 +1,6 @@
 import { ProviderHealth, ProviderName } from '../types';
 import { providerRegistry } from '../providers/registry';
+import { logger } from '../utils/logger';
 
 const LATENCY_WINDOW = 20;
 const DEGRADED_LATENCY_MS = 6000;
@@ -22,7 +23,7 @@ const state: Record<ProviderName, HealthState> = Object.fromEntries(
   ])
 ) as unknown as Record<ProviderName, HealthState>;
 
-export function recordSuccess(provider: ProviderName, latencyMs: number): void {
+export function recordSuccess(provider: ProviderName, latencyMs: number, correlationId?: string): void {
   const s = state[provider];
   s.consecutiveFailures = 0;
   s.lastCheckedAt = new Date().toISOString();
@@ -33,12 +34,14 @@ export function recordSuccess(provider: ProviderName, latencyMs: number): void {
     s.recentLatencies.reduce((a, b) => a + b, 0) / s.recentLatencies.length
   );
   s.status = s.avgLatencyMs > DEGRADED_LATENCY_MS ? 'degraded' : 'healthy';
+  logger.debug('Provider health recorded success', { correlationId, provider, latencyMs, status: s.status });
 }
 
 export function recordFailure(
   provider: ProviderName,
   errorCode: string,
-  message: string
+  message: string,
+  correlationId?: string
 ): void {
   const s = state[provider];
   s.consecutiveFailures += 1;
@@ -58,6 +61,13 @@ export function recordFailure(
   } else {
     s.status = 'degraded';
   }
+  logger.warn('Provider health recorded failure', {
+    correlationId,
+    provider,
+    errorCode,
+    status: s.status,
+    consecutiveFailures: s.consecutiveFailures,
+  });
 }
 
 export function getHealthSnapshot(): ProviderHealth[] {

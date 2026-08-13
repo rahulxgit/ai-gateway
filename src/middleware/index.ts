@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { PROVIDER_NAMES } from '../types';
@@ -67,6 +68,13 @@ export const chatRequestSchema = z.object({
   stream: z.boolean().optional(),
 });
 
+export function requestCorrelationId(req: Request, res: Response, next: NextFunction) {
+  const correlationId = uuidv4();
+  req.correlationId = correlationId;
+  res.setHeader('X-Request-ID', correlationId);
+  next();
+}
+
 export function validateBody(schema: z.ZodSchema) {
   return (req: Request, res: Response, next: NextFunction) => {
     const result = schema.safeParse(req.body);
@@ -96,7 +104,7 @@ export function errorHandler(
   _next: NextFunction
 ) {
   const message = err instanceof Error ? err.message : 'Unknown error';
-  logger.error('Unhandled request error', { path: req.path, error: message });
+  logger.error('Unhandled request error', { correlationId: req.correlationId, path: req.path, error: message });
 
   if (err instanceof DailyCostBudgetExceededError) {
     return res.status(429).json({ error: message });

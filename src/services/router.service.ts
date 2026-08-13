@@ -67,7 +67,7 @@ function candidateOrder(request: ChatRequest): ProviderName[] {
  * backoff, and moving to the next provider on any retryable failure. The
  * entire failover chain shares one wall-clock request budget.
  */
-export async function routeChat(request: ChatRequest): Promise<RouteResult> {
+export async function routeChat(request: ChatRequest, correlationId?: string): Promise<RouteResult> {
   const order = candidateOrder(request);
   if (order.length === 0) {
     throw new Error(
@@ -116,10 +116,11 @@ export async function routeChat(request: ChatRequest): Promise<RouteResult> {
         { maxRetries: env.maxRetries }
       );
 
-      recordSuccess(providerName, response.latencyMs);
+      recordSuccess(providerName, response.latencyMs, correlationId);
 
       if (attempted.length > 1) {
         failoverLogger.info('Request succeeded after failover', {
+          correlationId,
           finalProvider: providerName,
           chain: attempted,
         });
@@ -132,10 +133,11 @@ export async function routeChat(request: ChatRequest): Promise<RouteResult> {
       }
 
       const pErr = err instanceof ProviderError ? err : undefined;
-      recordFailure(providerName, pErr?.code ?? 'UNKNOWN', (err as Error).message);
+      recordFailure(providerName, pErr?.code ?? 'UNKNOWN', (err as Error).message, correlationId);
       failures.push({ provider: providerName, error: (err as Error).message });
 
       logger.warn('Provider failed, attempting failover', {
+        correlationId,
         provider: providerName,
         error: (err as Error).message,
         nextCandidates: order.slice(attempted.length),
@@ -157,7 +159,8 @@ export async function routeChat(request: ChatRequest): Promise<RouteResult> {
  */
 export async function routeChatStream(
   request: ChatRequest,
-  onChunk: (chunk: StreamChunk) => void
+  onChunk: (chunk: StreamChunk) => void,
+  correlationId?: string
 ): Promise<RouteResult> {
   const order = candidateOrder(request);
   if (order.length === 0) {
@@ -204,7 +207,7 @@ export async function routeChatStream(
         }),
       ]);
 
-      recordSuccess(providerName, response.latencyMs);
+      recordSuccess(providerName, response.latencyMs, correlationId);
       return { response, failoverChain: attempted };
     } catch (err) {
       if (err instanceof GatewayRequestBudgetExceededError) {
@@ -212,7 +215,7 @@ export async function routeChatStream(
       }
 
       const pErr = err instanceof ProviderError ? err : undefined;
-      recordFailure(providerName, pErr?.code ?? 'UNKNOWN', (err as Error).message);
+      recordFailure(providerName, pErr?.code ?? 'UNKNOWN', (err as Error).message, correlationId);
       failures.push({ provider: providerName, error: (err as Error).message });
 
       if (emittedAnyChunk) {
@@ -222,6 +225,7 @@ export async function routeChatStream(
       }
 
       logger.warn('Provider failed before streaming began, attempting failover', {
+        correlationId,
         provider: providerName,
         error: (err as Error).message,
       });

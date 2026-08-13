@@ -124,7 +124,11 @@ function relevantFilesBlock(files: ContextHandoff['relevantFiles']): string | nu
   ].join('\n\n');
 }
 
-async function maybeCompressInBackground(projectId: string | undefined, sessionId: string) {
+async function maybeCompressInBackground(
+  projectId: string | undefined,
+  sessionId: string,
+  correlationId?: string
+) {
   if (!projectId) return;
   const estTokens = estimateSessionTokenCount(sessionId);
   if (!shouldCompress(estTokens)) return;
@@ -137,9 +141,9 @@ async function maybeCompressInBackground(projectId: string | undefined, sessionI
     const summary = await compressMessages(toCompress);
     const memory = getProjectMemory(projectId);
     setConversationSummary(projectId, mergeSummaryIntoMemory(memory?.conversationSummary ?? null, summary));
-    logger.info('Compressed conversation context', { projectId, sessionId, messagesCompressed: toCompress.length });
+    logger.info('Compressed conversation context', { correlationId, projectId, sessionId, messagesCompressed: toCompress.length });
   } catch (err) {
-    logger.warn('Background compression failed', { error: (err as Error).message });
+    logger.warn('Background compression failed', { correlationId, error: (err as Error).message });
   }
 }
 
@@ -165,7 +169,10 @@ function assembleFullMessages(
   return messages;
 }
 
-export async function orchestrateChat(request: OrchestratedRequest): Promise<OrchestratedResult> {
+export async function orchestrateChat(
+  request: OrchestratedRequest,
+  correlationId?: string
+): Promise<OrchestratedResult> {
   enforceDailyCostBudget();
 
   const session = getOrCreateSession(request.sessionId);
@@ -180,7 +187,7 @@ export async function orchestrateChat(request: OrchestratedRequest): Promise<Orc
   if (firstUserMsg) autoTitleSessionIfNeeded(session.id, firstUserMsg.content);
 
   try {
-    const { response, failoverChain } = await routeChat({ ...request, messages: fullMessages });
+    const { response, failoverChain } = await routeChat({ ...request, messages: fullMessages }, correlationId);
 
     saveMessage(session.id, 'assistant', response.content, response.provider, response.model);
 
@@ -200,13 +207,14 @@ export async function orchestrateChat(request: OrchestratedRequest): Promise<Orc
 
     if (failoverChain.length > 1) {
       failoverLogger.info('Context preserved across provider switch', {
+        correlationId,
         sessionId: session.id,
         chain: failoverChain,
         finalProvider: response.provider,
       });
     }
 
-    void maybeCompressInBackground(request.projectId, session.id);
+    void maybeCompressInBackground(request.projectId, session.id, correlationId);
 
     return {
       sessionId: session.id,
@@ -235,6 +243,7 @@ export async function orchestrateChat(request: OrchestratedRequest): Promise<Orc
           errorCode: 'ALL_FAILED',
         });
       }
+      logger.error('All providers failed', { correlationId, sessionId: session.id, attempts: err.attempts });
     }
     throw err;
   }
@@ -242,7 +251,8 @@ export async function orchestrateChat(request: OrchestratedRequest): Promise<Orc
 
 export async function orchestrateChatStream(
   request: OrchestratedRequest,
-  onChunk: (chunk: StreamChunk) => void
+  onChunk: (chunk: StreamChunk) => void,
+  correlationId?: string
 ): Promise<OrchestratedResult> {
   enforceDailyCostBudget();
 
@@ -257,37 +267,43 @@ export async function orchestrateChatStream(
   const firstUserMsg = request.messages.find((m) => m.role === 'user');
   if (firstUserMsg) autoTitleSessionIfNeeded(session.id, firstUserMsg.content);
 
-  const { response, failoverChain } = await routeChatStream(
-    { ...request, messages: fullMessages },
-    onChunk
-  );
+  try {
+    const { response, failoverChain } = await routeChatStream(
+      { ...request, messages: fullMessages },
+      onChunk,
+      correlationId
+    );
 
-  saveMessage(session.id, 'assistant', response.content, response.provider, response.model);
+    saveMessage(session.id, 'assistant', response.content, response.provider, response.model);
 
-  recordAnalytics({
-    sessionId: session.id,
-    provider: response.provider,
-    model: response.model,
-    taskType: request.taskType ?? null,
-    promptTokens: response.usage.promptTokens,
-    completionTokens: response.usage.completionTokens,
-    totalTokens: response.usage.totalTokens,
-    estimatedCostUsd: response.estimatedCostUsd,
-    latencyMs: response.latencyMs,
-    success: true,
-    failoverFrom: failoverChain.length > 1 ? failoverChain[0] : null,
-  });
+    recordAnalytics({
+      sessionId: session.id,
+      provider: response.provider,
+      model: response.model,
+      taskType: request.taskType ?? null,
+      promptTokens: response.usage.promptTokens,
+      completionTokens: response.usage.completionTokens,
+      totalTokens: response.usage.totalTokens,
+      estimatedCostUsd: response.estimatedCostUsd,
+      latencyMs: response.latencyMs,
+      success: true,
+      failoverFrom: failoverChain.length > 1 ? failoverChain[0] : null,
+    });
 
-  void maybeCompressInBackground(request.projectId, session.id);
+    void maybeCompressInBackground(request.projectId, session.id, correlationId);
 
-  return {
-    sessionId: session.id,
-    content: response.content,
-    provider: response.provider,
-    model: response.model,
-    failoverChain,
-    usage: response.usage,
-    estimatedCostUsd: response.estimatedCostUsd,
-    latencyMs: response.latencyMs,
-  };
+    return {
+      sessionId: session.id,
+      content: response.content,
+      provider: response.provider,
+      model: response.model,
+      failoverChain,
+      usage: response.usage,
+      estimatedCostUsd: response.estimatedCostUsd,
+      latencyMs: response.latencyMs,
+    };
+  } catch (err) {
+    logger.error('Streaming orchestration failed', { correlationId, sessionId: session.id, error: (err as Error).message });
+    throw err;
+  }
 }
