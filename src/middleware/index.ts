@@ -7,12 +7,25 @@ import { PROVIDER_NAMES } from '../types';
 import { GatewayRequestBudgetExceededError } from '../services/router.service';
 import { DailyCostBudgetExceededError } from '../services/orchestrator.service';
 
-export const apiRateLimiter = rateLimit({
+const isChatRequest = (req: Request): boolean =>
+  req.method === 'POST' && (req.path === '/chat' || req.path === '/chat/stream');
+
+export const apiReadRateLimiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
-  max: env.rateLimitMax,
+  max: env.readRateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: isChatRequest,
   message: { error: 'Too many requests, please slow down.' },
+});
+
+export const apiChatRateLimiter = rateLimit({
+  windowMs: env.rateLimitWindowMs,
+  max: env.chatRateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !isChatRequest(req),
+  message: { error: 'Too many chat requests, please slow down.' },
 });
 
 const imageAttachmentSchema = z.object({
