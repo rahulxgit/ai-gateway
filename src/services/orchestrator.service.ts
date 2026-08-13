@@ -24,18 +24,14 @@ import {
   estimateSessionTokenCount,
   autoTitleSessionIfNeeded,
 } from './conversation.service';
-import { recordAnalytics } from './analytics.service';
+import { get24hEstimatedCostUsd, recordAnalytics } from './analytics.service';
+import { env } from '../config/env';
 import { logger, failoverLogger } from '../utils/logger';
 
 export interface OrchestratedRequest extends ChatRequest {
   projectId?: string;
 }
 
-// Cap on how many prior DB turns get injected into every outgoing request.
-// Without this, historyAsChatMessages() loads the *entire* session
-// unbounded — fine for high-TPM providers, but low-TPM free tiers (e.g.
-// Groq at 8K-30K TPM) can 413/429 on a two-word message once a session
-// runs long. Older turns are preserved via conversationSummary instead.
 const MAX_HISTORY_MESSAGES = 20;
 
 export interface OrchestratedResult {
@@ -49,16 +45,36 @@ export interface OrchestratedResult {
   latencyMs: number;
 }
 
+export class DailyCostBudgetExceededError extends Error {
+  public readonly statusCode = 429;
+  public readonly currentCostUsd: number;
+  public readonly budgetUsd: number;
+
+  constructor(currentCostUsd: number, budgetUsd: number) {
+    super(
+      `24-hour cost budget exceeded: $${currentCostUsd.toFixed(4)} used of $${budgetUsd.toFixed(4)} allowed.`
+    );
+    this.name = 'DailyCostBudgetExceededError';
+    this.currentCostUsd = currentCostUsd;
+    this.budgetUsd = budgetUsd;
+  }
+}
+
 /**
- * Assembles the "handoff packet" that lets any provider — including one
- * that has never seen this conversation before, because we just failed
- * over to it — continue exactly where the last one left off.
- *
- * Order of assembly mirrors the required provider-switching sequence:
- * 1. Load project memory   2. Load conversation memory
- * 3. Load relevant files   4. Load current task
- * 5. Load coding standards 6. (caller continues from here)
+ * Enforces the optional rolling 24-hour spend budget before any request
+ * side-effects or provider calls occur. A value of 0 disables the guard so
+ * existing deployments keep their current behavior until a budget is set.
  */
+export function enforceDailyCostBudget(): void {
+  const budgetUsd = env.dailyCostBudgetUsd;
+  if (budgetUsd <= 0) return;
+
+  const currentCostUsd = get24hEstimatedCostUsd();
+  if (currentCostUsd >= budgetUsd) {
+    throw new DailyCostBudgetExceededError(currentCostUsd, budgetUsd);
+  }
+}
+
 function buildContextHandoff(
   request: OrchestratedRequest,
   sessionId: string
@@ -76,13 +92,6 @@ function buildContextHandoff(
     }
   }
 
-  // Conversation memory: prior turns from the DB, not just what the caller
-  // passed in this request — this is what makes failover invisible even if
-  // the client only sends the latest message. Capped so long-running
-  // sessions don't silently balloon the payload sent to every provider
-  // (low-TPM providers like Groq's free tier can 413/429 on a "hi" once
-  // history + project context stack up). Older turns still get folded into
-  // conversationSummary via background compression.
   const priorHistory = historyAsChatMessages(sessionId, MAX_HISTORY_MESSAGES);
 
   const systemParts: string[] = [];
@@ -115,10 +124,6 @@ function relevantFilesBlock(files: ContextHandoff['relevantFiles']): string | nu
   ].join('\n\n');
 }
 
-/**
- * Runs compression in the background if the session has grown large, so
- * the *next* request benefits without blocking the current one.
- */
 async function maybeCompressInBackground(projectId: string | undefined, sessionId: string) {
   if (!projectId) return;
   const estTokens = estimateSessionTokenCount(sessionId);
@@ -154,29 +159,19 @@ function assembleFullMessages(
     });
   }
 
-  // Recent verbatim turns from persistent memory, then whatever new
-  // message(s) this request is adding on top.
   messages.push(...handoff.recentMessages);
   messages.push(...request.messages.filter((m) => m.role !== 'system'));
 
   return messages;
 }
 
-/**
- * Non-streaming entry point. This is what controllers should call instead
- * of routeChat directly — it guarantees project + conversation continuity
- * across any provider failover that happens underneath.
- */
 export async function orchestrateChat(request: OrchestratedRequest): Promise<OrchestratedResult> {
+  enforceDailyCostBudget();
+
   const session = getOrCreateSession(request.sessionId);
   const handoff = buildContextHandoff(request, session.id);
   const fullMessages = assembleFullMessages(request, handoff);
 
-  // Persist the new user-facing message(s) now, before calling the
-  // provider, so context is never lost even if the process crashes mid-call.
-  // Batched in a single transaction (one INSERT per message + one
-  // touchSession) instead of N separate saveMessage calls, each of which
-  // was its own INSERT+UPDATE round trip.
   saveMessages(
     session.id,
     request.messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }))
@@ -245,15 +240,12 @@ export async function orchestrateChat(request: OrchestratedRequest): Promise<Orc
   }
 }
 
-/**
- * Streaming entry point with the same context-handoff guarantees. Failover
- * before the first token is invisible to the caller; failover mid-stream is
- * surfaced as an error (see router.service for rationale).
- */
 export async function orchestrateChatStream(
   request: OrchestratedRequest,
   onChunk: (chunk: StreamChunk) => void
 ): Promise<OrchestratedResult> {
+  enforceDailyCostBudget();
+
   const session = getOrCreateSession(request.sessionId);
   const handoff = buildContextHandoff(request, session.id);
   const fullMessages = assembleFullMessages(request, handoff);
