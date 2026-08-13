@@ -6,7 +6,7 @@ import { validateConfiguredModels } from '../services/model-validation.service';
 import { logger } from '../utils/logger';
 
 export async function postChat(req: Request, res: Response) {
-  const result = await orchestrateChat(req.body);
+  const result = await orchestrateChat(req.body, req.correlationId);
   res.json(result);
 }
 
@@ -19,10 +19,10 @@ export async function postChatStream(req: Request, res: Response) {
   try {
     const result = await orchestrateChatStream(req.body, (chunk) => {
       res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-    });
+    }, req.correlationId);
     res.write(`data: ${JSON.stringify({ type: 'done', result })}\n\n`);
   } catch (err) {
-    logger.error('Stream failed', { error: (err as Error).message });
+    logger.error('Stream failed', { correlationId: req.correlationId, error: (err as Error).message });
     res.write(`data: ${JSON.stringify({ type: 'error', error: (err as Error).message })}\n\n`);
   } finally {
     res.end();
