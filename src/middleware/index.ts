@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { PROVIDER_NAMES } from '../types';
+import { GatewayRequestBudgetExceededError } from '../services/router.service';
 
 export const apiRateLimiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
@@ -92,6 +93,9 @@ export function errorHandler(
   const message = err instanceof Error ? err.message : 'Unknown error';
   logger.error('Unhandled request error', { path: req.path, error: message });
 
+  if (err instanceof GatewayRequestBudgetExceededError) {
+    return res.status(504).json({ error: message });
+  }
   if (message.includes('All configured providers failed')) {
     return res.status(502).json({ error: 'All providers failed', detail: message });
   }
