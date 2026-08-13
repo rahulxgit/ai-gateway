@@ -26,20 +26,21 @@ export function createApp() {
     : ['*'];
   app.use(cors({ origin: corsOrigins.length > 1 ? corsOrigins : corsOrigins[0] ?? '*' }));
 
-  // Keep normal JSON payloads small. Chat routes install their own parser so
-  // image-bearing requests can opt into the existing 50mb ceiling without
-  // giving every endpoint that same memory budget.
+  // Chat routes install their own 50mb JSON parser first so existing
+  // image-bearing requests continue to work. All remaining routes use the
+  // smaller 2mb parser below.
+  app.use('/chat', apiChatRateLimiter);
+  app.use(chatRoutes);
+
   app.use(express.json({ limit: '2mb' }));
   app.use(sanitizeInput);
 
   app.use(apiRateLimiter);
   app.use('/health', apiReadRateLimiter);
   app.use('/providers', apiReadRateLimiter);
-  app.use('/chat', apiChatRateLimiter);
 
   app.get('/', (_req, res) => res.json({ name: 'AI Gateway', status: 'running' }));
 
-  app.use(chatRoutes);
   app.use(sessionRoutes);
   app.use(analyticsRoutes);
   app.use(projectRoutes);
