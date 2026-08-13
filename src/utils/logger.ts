@@ -1,5 +1,4 @@
 import winston from 'winston';
-import path from 'path';
 import { env } from '../config/env';
 
 const { combine, timestamp, printf, colorize, errors, json } = winston.format;
@@ -14,23 +13,16 @@ const consoleFormat = combine(
   })
 );
 
+const jsonConsoleFormat = combine(timestamp(), errors({ stack: true }), json());
+
 export const logger = winston.createLogger({
   level: env.logLevel,
-  format: combine(timestamp(), errors({ stack: true }), json()),
   transports: [
-    new winston.transports.File({
-      filename: path.join(process.cwd(), 'logs', 'error.log'),
-      level: 'error',
-    }),
-    new winston.transports.File({
-      filename: path.join(process.cwd(), 'logs', 'combined.log'),
+    new winston.transports.Console({
+      format: env.nodeEnv === 'production' ? jsonConsoleFormat : consoleFormat,
     }),
   ],
 });
-
-if (env.nodeEnv !== 'production') {
-  logger.add(new winston.transports.Console({ format: consoleFormat }));
-}
 
 // Dedicated logger for provider failover events — kept separate so ops can
 // tail just this stream to watch routing behavior in real time.
