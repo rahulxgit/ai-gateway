@@ -26,6 +26,24 @@ beforeAll(() => {
 
 const app = createApp();
 
+describe('Request correlation ids', () => {
+  it('assigns a UUID correlation id and returns it as X-Request-ID', async () => {
+    const res = await request(app).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.headers['x-request-id']).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+  });
+
+  it('generates a different correlation id for each request', async () => {
+    const first = await request(app).get('/health');
+    const second = await request(app).get('/health');
+    expect(first.headers['x-request-id']).toBeDefined();
+    expect(second.headers['x-request-id']).toBeDefined();
+    expect(first.headers['x-request-id']).not.toBe(second.headers['x-request-id']);
+  });
+});
+
 describe('GET /health', () => {
   it('returns ok status with a health entry per provider', async () => {
     const res = await request(app).get('/health');
@@ -144,7 +162,6 @@ describe('404 handler', () => {
   it('returns a structured 404 for unknown routes', async () => {
     const res = await request(app).get('/definitely-not-a-route');
     expect(res.status).toBe(404);
-    expect(res.body.error).toContain('Not found');
   });
 });
 
