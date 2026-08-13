@@ -1,8 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { env } from './config/env';
-import { apiChatRateLimiter, apiRateLimiter, apiReadRateLimiter, errorHandler, notFoundHandler, requestCorrelationId, sanitizeInput } from './middleware';
+import {
+  apiChatRateLimiter,
+  apiRateLimiter,
+  apiReadRateLimiter,
+  errorHandler,
+  notFoundHandler,
+  requestCorrelationId,
+  sanitizeInput,
+} from './middleware';
+import { smallJsonBodyParser } from './middleware/body-limit';
 import chatRoutes from './routes/chat.routes';
 import sessionRoutes from './routes/session.routes';
 import analyticsRoutes from './routes/analytics.routes';
@@ -14,21 +22,17 @@ export function createApp() {
 
   app.use(requestCorrelationId);
   app.use(helmet());
-  // CORS_ORIGIN accepts a comma-separated list, e.g.
-  // "https://a.vercel.app,https://b.vercel.app" — so this gateway can serve
-  // multiple frontends without falling back to "*". A single "*" or one
-  // origin still works exactly as before.
-  const corsOrigins = env.corsOrigin.split(',').map((o) => o.trim()).filter(Boolean);
+  const corsOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+    : ['*'];
   app.use(cors({ origin: corsOrigins.length > 1 ? corsOrigins : corsOrigins[0] ?? '*' }));
-  // Base64-encoded images in chat requests can be large (a single 15MB
-  // image is ~20MB as base64); 2mb was fine for text-only payloads but
-  // would reject every image-bearing request.
-  app.use(express.json({ limit: '50mb' }));
+
+  // Normal JSON traffic is limited to 2mb. The parser skips chat routes,
+  // which install their own 50mb parser at route level for image-bearing payloads.
+  app.use(smallJsonBodyParser);
   app.use(sanitizeInput);
 
-  // Keep the existing default limiter for all other endpoints, while using
-  // a generous limiter for the lightweight health/provider reads and the
-  // existing stricter limit for chat POSTs.
+  // Keep the existing rate-limiter ordering and behavior unchanged.
   app.use(apiRateLimiter);
   app.use('/health', apiReadRateLimiter);
   app.use('/providers', apiReadRateLimiter);

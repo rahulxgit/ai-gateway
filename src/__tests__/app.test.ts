@@ -131,6 +131,12 @@ describe('POST /chat validation', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Invalid request body');
   });
+
+  it('rejects an oversized non-chat JSON request with 413', async () => {
+    const oversizedBody = { name: 'x'.repeat(2_100_000) };
+    const res = await request(app).post('/sessions').send(oversizedBody);
+    expect(res.status).toBe(413);
+  });
 });
 
 describe('Project + workspace API', () => {

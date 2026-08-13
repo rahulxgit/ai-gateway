@@ -106,6 +106,10 @@ export function errorHandler(
   const message = err instanceof Error ? err.message : 'Unknown error';
   logger.error('Unhandled request error', { correlationId: req.correlationId, path: req.path, error: message });
 
+  const parserError = err as { type?: string; status?: number; statusCode?: number };
+  if (parserError.type === 'entity.too.large' || parserError.status === 413 || parserError.statusCode === 413) {
+    return res.status(413).json({ error: 'Request body too large' });
+  }
   if (err instanceof DailyCostBudgetExceededError) {
     return res.status(429).json({ error: message });
   }
