@@ -1,5 +1,10 @@
 import { db, runMigrations } from '../database/client';
-import { recordAnalytics, getAnalyticsSummary, invalidateAnalyticsCache } from '../services/analytics.service';
+import {
+  recordAnalytics,
+  getAnalyticsSummary,
+  get24hEstimatedCostUsd,
+  invalidateAnalyticsCache,
+} from '../services/analytics.service';
 
 beforeAll(() => {
   runMigrations();
@@ -80,5 +85,15 @@ describe('getAnalyticsSummary — rolling 24h window', () => {
     const summary = getAnalyticsSummary();
     expect(summary.totalRequests).toBe(0);
     expect(summary.successRate).toBe(1);
+  });
+});
+
+describe('get24hEstimatedCostUsd', () => {
+  it('uses the same rolling 24-hour window as the analytics summary', () => {
+    insertAt(1, { estimatedCostUsd: 1.25 });
+    insertAt(23, { estimatedCostUsd: 0.75 });
+    insertAt(25, { estimatedCostUsd: 100 });
+
+    expect(get24hEstimatedCostUsd()).toBeCloseTo(2);
   });
 });
