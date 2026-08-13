@@ -1,14 +1,8 @@
-import { json, RequestHandler } from 'express';
+import { json } from 'express';
 import type { IncomingMessage } from 'node:http';
 
 const DEFAULT_BODY_LIMIT = '2mb';
 const LARGE_BODY_LIMIT = '50mb';
-
-function isChatPath(req: Parameters<RequestHandler>[0]): boolean {
-  if (req.method !== 'POST') return false;
-  const path = `${req.baseUrl}${req.path}`.replace(/\/$/, '') || '/';
-  return path === '/chat' || path === '/chat/stream';
-}
 
 function isChatRequest(req: IncomingMessage): boolean {
   if (req.method !== 'POST') return false;
@@ -18,7 +12,9 @@ function isChatRequest(req: IncomingMessage): boolean {
 
 function isJsonContentType(req: IncomingMessage): boolean {
   const contentType = req.headers['content-type'];
-  if (Array.isArray(contentType)) return contentType.some((value) => value.toLowerCase().startsWith('application/json'));
+  if (Array.isArray(contentType)) {
+    return contentType.some((value) => value.toLowerCase().startsWith('application/json'));
+  }
   return typeof contentType === 'string' && contentType.toLowerCase().startsWith('application/json');
 }
 
@@ -34,4 +30,4 @@ export const smallJsonBodyParser = json({
 /** Parser used only by POST /chat and POST /chat/stream. */
 export const largeJsonBodyParser = json({ limit: LARGE_BODY_LIMIT });
 
-export { DEFAULT_BODY_LIMIT, LARGE_BODY_LIMIT, isChatPath };
+export { DEFAULT_BODY_LIMIT, LARGE_BODY_LIMIT };
