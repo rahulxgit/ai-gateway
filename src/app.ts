@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
-import { apiRateLimiter, errorHandler, notFoundHandler, sanitizeInput } from './middleware';
+import { apiChatRateLimiter, apiRateLimiter, apiReadRateLimiter, errorHandler, notFoundHandler, sanitizeInput } from './middleware';
 import chatRoutes from './routes/chat.routes';
 import sessionRoutes from './routes/session.routes';
 import analyticsRoutes from './routes/analytics.routes';
@@ -24,7 +24,14 @@ export function createApp() {
   // would reject every image-bearing request.
   app.use(express.json({ limit: '50mb' }));
   app.use(sanitizeInput);
+
+  // Keep the existing default limiter for all other endpoints, while using
+  // a generous limiter for the lightweight health/provider reads and the
+  // existing stricter limit for chat POSTs.
   app.use(apiRateLimiter);
+  app.use('/health', apiReadRateLimiter);
+  app.use('/providers', apiReadRateLimiter);
+  app.use('/chat', apiChatRateLimiter);
 
   app.get('/', (_req, res) => res.json({ name: 'AI Gateway', status: 'running' }));
 

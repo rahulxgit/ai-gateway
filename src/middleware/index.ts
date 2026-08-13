@@ -7,12 +7,39 @@ import { PROVIDER_NAMES } from '../types';
 import { GatewayRequestBudgetExceededError } from '../services/router.service';
 import { DailyCostBudgetExceededError } from '../services/orchestrator.service';
 
+const requestPath = (req: Request): string => `${req.baseUrl}${req.path}`.replace(/\/$/, '') || '/';
+
+const isChatRequest = (req: Request): boolean =>
+  req.method === 'POST' && (requestPath(req) === '/chat' || requestPath(req) === '/chat/stream');
+
+const isGenerousReadRequest = (req: Request): boolean =>
+  req.method === 'GET' && (requestPath(req) === '/health' || requestPath(req) === '/providers');
+
 export const apiRateLimiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
   max: env.rateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => isChatRequest(req) || isGenerousReadRequest(req),
   message: { error: 'Too many requests, please slow down.' },
+});
+
+export const apiReadRateLimiter = rateLimit({
+  windowMs: env.rateLimitWindowMs,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !isGenerousReadRequest(req),
+  message: { error: 'Too many requests, please slow down.' },
+});
+
+export const apiChatRateLimiter = rateLimit({
+  windowMs: env.rateLimitWindowMs,
+  max: env.rateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !isChatRequest(req),
+  message: { error: 'Too many chat requests, please slow down.' },
 });
 
 const imageAttachmentSchema = z.object({
