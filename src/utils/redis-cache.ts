@@ -87,5 +87,5 @@ export function closeRedisCache(): void {
 
 export const CACHE_KEYS = {
   analyticsSummary: 'ai-gateway:analytics:summary:v1',
-  modelValidation: 'ai-gateway:model-validation:v1',
+  modelValidationPrefix: 'ai-gateway:model-validation:v1:',
 } as const;
