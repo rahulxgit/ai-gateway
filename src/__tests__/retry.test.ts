@@ -1,5 +1,5 @@
 import { retryWithBackoff } from '../utils/retry';
-import { ProviderError } from '../types';
+import { ProviderError, ProviderErrorCode } from '../types';
 
 describe('retryWithBackoff', () => {
   it('returns the result immediately on success', async () => {
@@ -20,13 +20,20 @@ describe('retryWithBackoff', () => {
     expect(fn).toHaveBeenCalledTimes(3); // initial attempt + 2 retries
   });
 
-  it('does not retry non-retryable errors', async () => {
-    const err = new ProviderError('gemini', 'INVALID_REQUEST', 'bad request');
+  it.each([
+    'INVALID_REQUEST',
+    'AUTH_ERROR',
+    'NOT_FOUND',
+    'ACCOUNT_SUSPENDED',
+    'INSUFFICIENT_CREDITS',
+  ] as ProviderErrorCode[])('does not retry %s errors', async (code) => {
+    const err = new ProviderError('gemini', code, `${code} failure`);
     const fn = jest.fn().mockRejectedValue(err);
 
+    expect(err.retryable).toBe(false);
     await expect(
       retryWithBackoff(fn, { maxRetries: 3, baseDelayMs: 1 })
-    ).rejects.toThrow('bad request');
+    ).rejects.toThrow(`${code} failure`);
 
     expect(fn).toHaveBeenCalledTimes(1);
   });
