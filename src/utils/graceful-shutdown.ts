@@ -1,6 +1,7 @@
 import http from 'http';
 import { db } from '../database/client';
 import { logger } from './logger';
+import { closeRedisCache } from './redis-cache';
 
 export const SHUTDOWN_DRAIN_TIMEOUT_MS = 30_000;
 
@@ -33,6 +34,7 @@ export function createGracefulShutdown(
       }
 
       try {
+        closeRedisCache();
         closeDatabase();
         logger.info('Database connection closed');
         if (err) {
