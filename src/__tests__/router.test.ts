@@ -20,12 +20,12 @@ import {
 } from '../services/router.service';
 import { recordSuccess } from '../services/health.service';
 
-// Mock only the env value used by router budget tests so changing the suite
-// does not depend on a developer's local .env file.
+// Mock only the env values used by router tests so changing the suite does
+// not depend on a developer's local .env file.
 jest.mock('../config/env', () => ({
   env: {
     ...jest.requireActual('../config/env').env,
-    gatewayRequestBudgetMs: 60_000,
+    gatewayRequestBudgetMs: 100,
     maxRetries: 0,
   },
 }));
