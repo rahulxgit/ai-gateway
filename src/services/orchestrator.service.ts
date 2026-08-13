@@ -243,7 +243,7 @@ export async function orchestrateChat(
           errorCode: 'ALL_FAILED',
         });
       }
-      logger.error('All providers failed', { correlationId, sessionId, attempts: err.attempts });
+      logger.error('All providers failed', { correlationId, sessionId: session.id, attempts: err.attempts });
     }
     throw err;
   }
