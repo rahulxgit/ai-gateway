@@ -56,6 +56,7 @@ export const env = {
   maxPromptLength: optionalNumber('MAX_PROMPT_LENGTH', 3_500_000),
   requestTimeoutMs: optionalNumber('REQUEST_TIMEOUT_MS', 30_000),
   maxRetries: optionalNumber('MAX_RETRIES', 2),
+  gatewayRequestBudgetMs: optionalNumber('GATEWAY_REQUEST_BUDGET_MS', 60_000),
 
   corsOrigin: optional('CORS_ORIGIN', '*'),
   logLevel: optional('LOG_LEVEL', 'info'),

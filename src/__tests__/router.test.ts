@@ -12,13 +12,24 @@ jest.mock('../providers/registry', () => {
 });
 
 import { listConfiguredProviders, getProvider } from '../providers/registry';
-import { routeChat, routeChatStream, AllProvidersFailedError } from '../services/router.service';
+import {
+  routeChat,
+  routeChatStream,
+  AllProvidersFailedError,
+  GatewayRequestBudgetExceededError,
+} from '../services/router.service';
 import { recordSuccess } from '../services/health.service';
 
-// supportsVision defaults to true so most tests (which don't care about
-// vision routing) don't need it; the few vision-specific tests below
-// override it via the options param, avoiding the `as any` casts that
-// were previously needed to bolt the property on after construction.
+// Mock only the env values used by router tests so changing the suite does
+// not depend on a developer's local .env file.
+jest.mock('../config/env', () => ({
+  env: {
+    ...jest.requireActual('../config/env').env,
+    gatewayRequestBudgetMs: 100,
+    maxRetries: 0,
+  },
+}));
+
 function mockAdapter(
   name: ProviderName,
   impl: (options: ProviderAdapterOptions) => Promise<ProviderResponse>,
@@ -106,11 +117,6 @@ describe('routeChat failover', () => {
   });
 
   it('only passes a model override to the provider it was intended for, not to fallback providers', async () => {
-    // Regression test: a model override like an OpenRouter-specific model
-    // string ("deepseek/deepseek-chat-v3.1:free") is meaningless to other
-    // providers. If it leaked into the failover chain, every fallback
-    // provider would receive an invalid model ID and fail immediately,
-    // cascading into a total outage instead of a clean failover.
     const openrouter = mockAdapter('openrouter', async () => {
       throw new ProviderError('openrouter', 'SERVER_ERROR', 'openrouter down');
     });
@@ -127,11 +133,6 @@ describe('routeChat failover', () => {
       mockAdapter(name, async () => { throw new Error('unexpected provider called'); }))
     );
     (listConfiguredProviders as jest.Mock).mockReturnValue(['openrouter', 'gemini']);
-    // Health status is normally seeded from each adapter's real isConfigured()
-    // check, which would be false here since no real OPENROUTER_API_KEY is
-    // set in the test environment — that would push openrouter into the
-    // "degraded" bucket and break the ordering this test depends on. Force
-    // it healthy directly so the test verifies routing logic, not env setup.
     recordSuccess('openrouter', 10);
 
     const result = await routeChat({
@@ -140,11 +141,9 @@ describe('routeChat failover', () => {
       model: 'deepseek/deepseek-chat-v3.1:free',
     });
 
-    // Openrouter received the override...
     expect(openrouter.chat).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'deepseek/deepseek-chat-v3.1:free' })
     );
-    // ...but gemini, reached only via failover, must NOT receive it.
     expect(gemini.chat).toHaveBeenCalledWith(expect.objectContaining({ model: undefined }));
     expect(result.response.model).toBe('gemini-default-model');
   });
@@ -208,17 +207,34 @@ describe('routeChat failover', () => {
       })
     ).rejects.toThrow('No vision-capable providers are configured');
   });
+
+  it('enforces one wall-clock budget across the entire failover chain', async () => {
+    const nowSpy = jest.spyOn(Date, 'now');
+    const times = [1_000, 1_050, 1_150];
+    nowSpy.mockImplementation(() => times.shift() ?? 1_150);
+
+    const gemini = mockAdapter('gemini', async () => {
+      throw new ProviderError('gemini', 'TIMEOUT', 'gemini timed out');
+    });
+    const anthropic = mockAdapter('anthropic', async () => {
+      throw new ProviderError('anthropic', 'TIMEOUT', 'anthropic timed out');
+    });
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, anthropic }[name as 'gemini' | 'anthropic']));
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'anthropic']);
+
+    await expect(
+      routeChat({ messages: [{ role: 'user', content: 'hello' }] })
+    ).rejects.toBeInstanceOf(GatewayRequestBudgetExceededError);
+
+    expect(gemini.chat).toHaveBeenCalledTimes(1);
+    expect(anthropic.chat).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
+  });
 });
 
 describe('routeChatStream failover / error paths', () => {
   beforeEach(() => {
     (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'anthropic']);
-    // health.service is a shared module-level singleton across the whole
-    // test file — a prior test's recordFailure() would otherwise leak in
-    // here and reorder candidates ahead of listConfiguredProviders'
-    // configured order via the healthy/degraded split in candidateOrder().
-    // Force both back to a known-healthy, equal-footing state so these
-    // tests are deterministic regardless of test execution order.
     recordSuccess('gemini', 10);
     recordSuccess('anthropic', 10);
   });

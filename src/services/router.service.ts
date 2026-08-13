@@ -26,6 +26,13 @@ export class AllProvidersFailedError extends Error {
   }
 }
 
+export class GatewayRequestBudgetExceededError extends Error {
+  constructor() {
+    super('Gateway request time budget exceeded');
+    this.name = 'GatewayRequestBudgetExceededError';
+  }
+}
+
 function requestHasImages(request: ChatRequest): boolean {
   return request.messages.some((m) => m.images && m.images.length > 0);
 }
@@ -57,8 +64,8 @@ function candidateOrder(request: ChatRequest): ProviderName[] {
 /**
  * Runs a non-streaming chat request through the failover chain: tries each
  * configured provider in priority order, retrying transient errors with
- * backoff, and moving to the next provider on any retryable failure. Only
- * throws once every configured provider has been exhausted.
+ * backoff, and moving to the next provider on any retryable failure. The
+ * entire failover chain shares one wall-clock request budget.
  */
 export async function routeChat(request: ChatRequest): Promise<RouteResult> {
   const order = candidateOrder(request);
@@ -72,8 +79,14 @@ export async function routeChat(request: ChatRequest): Promise<RouteResult> {
 
   const attempted: ProviderName[] = [];
   const failures: { provider: ProviderName; error: string }[] = [];
+  const deadline = Date.now() + env.gatewayRequestBudgetMs;
 
   for (const providerName of order) {
+    const remainingBudgetMs = deadline - Date.now();
+    if (remainingBudgetMs <= 0) {
+      throw new GatewayRequestBudgetExceededError();
+    }
+
     attempted.push(providerName);
     const adapter = getProvider(providerName);
     // A model override (e.g. an OpenRouter-specific model string like
@@ -89,12 +102,17 @@ export async function routeChat(request: ChatRequest): Promise<RouteResult> {
     try {
       const response = await retryWithBackoff(
         () =>
-          adapter.chat({
-            messages: request.messages,
-            model: modelForThisProvider,
-            temperature: request.temperature,
-            maxTokens: request.maxTokens,
-          }),
+          Promise.race([
+            adapter.chat({
+              messages: request.messages,
+              model: modelForThisProvider,
+              temperature: request.temperature,
+              maxTokens: request.maxTokens,
+            }),
+            new Promise<ProviderResponse>((_, reject) => {
+              setTimeout(() => reject(new GatewayRequestBudgetExceededError()), remainingBudgetMs);
+            }),
+          ]),
         { maxRetries: env.maxRetries }
       );
 
@@ -109,6 +127,10 @@ export async function routeChat(request: ChatRequest): Promise<RouteResult> {
 
       return { response, failoverChain: attempted };
     } catch (err) {
+      if (err instanceof GatewayRequestBudgetExceededError) {
+        throw err;
+      }
+
       const pErr = err instanceof ProviderError ? err : undefined;
       recordFailure(providerName, pErr?.code ?? 'UNKNOWN', (err as Error).message);
       failures.push({ provider: providerName, error: (err as Error).message });
@@ -131,6 +153,7 @@ export async function routeChat(request: ChatRequest): Promise<RouteResult> {
  * before the first chunk is sent. Once tokens have started flowing, a
  * failure is surfaced to the caller rather than silently restarting output
  * from a different provider, which would look broken to the end user.
+ * The entire failover chain shares one wall-clock request budget.
  */
 export async function routeChatStream(
   request: ChatRequest,
@@ -147,8 +170,14 @@ export async function routeChatStream(
 
   const attempted: ProviderName[] = [];
   const failures: { provider: ProviderName; error: string }[] = [];
+  const deadline = Date.now() + env.gatewayRequestBudgetMs;
 
   for (const providerName of order) {
+    const remainingBudgetMs = deadline - Date.now();
+    if (remainingBudgetMs <= 0) {
+      throw new GatewayRequestBudgetExceededError();
+    }
+
     attempted.push(providerName);
     const adapter = getProvider(providerName);
     let emittedAnyChunk = false;
@@ -157,22 +186,31 @@ export async function routeChatStream(
       request.forceProvider && providerName === request.forceProvider ? request.model : undefined;
 
     try {
-      const response = await adapter.chatStream(
-        {
-          messages: request.messages,
-          model: modelForThisProvider,
-          temperature: request.temperature,
-          maxTokens: request.maxTokens,
-        },
-        (chunk) => {
-          emittedAnyChunk = emittedAnyChunk || chunk.delta.length > 0;
-          onChunk(chunk);
-        }
-      );
+      const response = await Promise.race([
+        adapter.chatStream(
+          {
+            messages: request.messages,
+            model: modelForThisProvider,
+            temperature: request.temperature,
+            maxTokens: request.maxTokens,
+          },
+          (chunk) => {
+            emittedAnyChunk = emittedAnyChunk || chunk.delta.length > 0;
+            onChunk(chunk);
+          }
+        ),
+        new Promise<ProviderResponse>((_, reject) => {
+          setTimeout(() => reject(new GatewayRequestBudgetExceededError()), remainingBudgetMs);
+        }),
+      ]);
 
       recordSuccess(providerName, response.latencyMs);
       return { response, failoverChain: attempted };
     } catch (err) {
+      if (err instanceof GatewayRequestBudgetExceededError) {
+        throw err;
+      }
+
       const pErr = err instanceof ProviderError ? err : undefined;
       recordFailure(providerName, pErr?.code ?? 'UNKNOWN', (err as Error).message);
       failures.push({ provider: providerName, error: (err as Error).message });
