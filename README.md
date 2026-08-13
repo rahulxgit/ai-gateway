@@ -1,497 +1,396 @@
 # AI Gateway — Multi-LLM Router with Automatic Failover
 
-A production-ready gateway that routes chat requests across seven LLM providers
-(Gemini, Anthropic, OpenAI, Groq, Together AI, OpenRouter, Hugging Face),
-automatically failing over between them on rate limits, quota errors,
-timeouts, or outages — **without losing conversation or project context**.
+AI Gateway is a production-oriented Express/TypeScript service that exposes one chat API in front of multiple LLM providers. It adds task-aware routing, provider failover, conversation/project persistence, analytics, model validation, Redis caching, request protection, and graceful shutdown without changing the core architecture:
 
-## Why this exists
+```text
+Client
+  ↓
+Express API / middleware
+  ↓
+Orchestrator
+  ↓
+Router / failover engine
+  ↓
+Provider adapters
+  ↓
+SQLite persistence
 
-Single-provider apps break when that provider rate-limits, goes down, or
-runs out of quota. This gateway sits in front of every provider behind one
-API, so your app keeps working even when any individual provider doesn't.
+Optional cache layer:
+L1 in-process cache → L2 Redis → existing SQLite/provider operation
+```
+
+Repository: https://github.com/rahulxgit/ai-gateway  
+Frontend: https://ai-gateway-alpha.vercel.app/  
+Backend: https://ai-gateway-wx35.onrender.com
+
+## Current capabilities
+
+- 21 configured provider adapters behind a shared `ProviderAdapter` interface.
+- Task-aware routing and automatic provider failover.
+- Streaming chat support.
+- Conversation/session persistence in SQLite.
+- Persistent projects, workspace files, edit history, undo/revert, and snapshots.
+- Document upload/extraction support for the existing upload flow.
+- Provider health and model-availability checks, including Gemini and Anthropic.
+- Token/cost analytics and an optional rolling 24-hour cost budget.
+- Optional Redis L2 caching with in-process L1 fallback.
+- Request correlation IDs through the HTTP request and service logging path.
+- Graceful `SIGTERM`/`SIGINT` shutdown with HTTP draining and database close.
+- Production stdout logging instead of relying on persistent log files.
+- Separate rate limits for chat traffic and lightweight read endpoints.
+- 2 MB default JSON request limit, with a dedicated 50 MB JSON parser for `/chat` and `/chat/stream` so existing vision payloads continue to work.
 
 ## Architecture
 
-```
-Client
-  │
-  ▼
-Express API  ──▶  AI Orchestrator  ──▶  Router (failover engine)
-                        │                     │
-                        │                     ▼
-                        │              Provider Adapters
-                        │        (Gemini / Anthropic / OpenAI /
-                        │         Groq / Together / OpenRouter / HF)
-                        ▼
-              Persistent Project Context
-        (SQLite: sessions, messages, projects,
-         files, edit history, snapshots, analytics)
+```text
+                         ┌───────────────────────┐
+                         │       Express API     │
+                         │ CORS / Helmet / limit  │
+                         │ rate limit / request ID│
+                         └───────────┬───────────┘
+                                     │
+                                     ▼
+                         ┌───────────────────────┐
+                         │      Orchestrator     │
+                         │ context + cost guard  │
+                         └───────────┬───────────┘
+                                     │
+                                     ▼
+                         ┌───────────────────────┐
+                         │ Router / Failover     │
+                         │ retries + deadline    │
+                         └───────────┬───────────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    ▼                ▼                ▼
+              Provider adapters  Health checks   Analytics
+                    │
+                    ▼
+                 SQLite
+
+              Optional shared cache:
+          L1 memory → L2 Redis → SQLite/provider
 ```
 
-- **Provider adapters** (`src/providers/`) all implement one `ProviderAdapter`
-  interface. OpenAI, Groq, Together, and OpenRouter share a single
-  `OpenAICompatibleAdapter` base since they speak the same API shape;
-  Anthropic and Gemini have their own adapters for their native formats.
-- **Router** (`src/services/router.service.ts`) tries providers in a
-  task-aware priority order, retries transient errors with exponential
-  backoff, and fails over to the next provider on any retryable error.
-- **Orchestrator** (`src/services/orchestrator.service.ts`) wraps the router
-  and guarantees continuity: before every call it reloads project memory,
-  conversation history, and relevant files from SQLite and injects them as
-  context — so a failover to a different provider is invisible to the user.
-- **Persistent Project Context**: every file write, architecture decision,
-  task, bug, and conversation turn is stored in SQLite with full version
-  history, undo/revert, and named snapshots.
+### Source-of-truth modules
+
+| Area | Location |
+|---|---|
+| Environment/config | `src/config/env.ts` |
+| Routing priorities | `src/config/routing.ts` |
+| Provider registry | `src/providers/registry.ts` |
+| Provider interface/types | `src/types/index.ts` |
+| Failover + global request budget | `src/services/router.service.ts` |
+| Orchestration + daily cost guard | `src/services/orchestrator.service.ts` |
+| Analytics | `src/services/analytics.service.ts` |
+| Model validation | `src/services/model-validation.service.ts` |
+| Health | `src/services/health.service.ts` |
+| Redis L2 cache | `src/utils/redis-cache.ts` |
+| Request parsing limits | `src/middleware/body-limit.ts` |
+| HTTP middleware | `src/middleware/index.ts` |
+| Graceful shutdown | `src/utils/graceful-shutdown.ts` |
+| Logging | `src/utils/logger.ts` |
+| SQLite client/schema | `src/database/` |
+
+## Supported providers
+
+The current registry contains 21 providers:
+
+1. OpenAI
+2. Gemini
+3. Anthropic
+4. Groq
+5. Together AI
+6. OpenRouter
+7. Hugging Face
+8. DeepSeek
+9. Kimi / Moonshot AI
+10. Cerebras
+11. Mistral
+12. Cloudflare Workers AI
+13. Fireworks AI
+14. Inference.net
+15. Nebius AI Studio
+16. SambaNova Cloud
+17. NVIDIA NIM
+18. Novita AI
+19. Baseten
+20. ModelScope
+21. AI/ML API
+
+Provider availability is configuration-driven: set a provider's API key (and Cloudflare's account ID where required) and the registry can expose it. `/providers` and `/health/models` reflect the providers configured in the running environment.
 
 ## Quick start
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/rahulxgit/ai-gateway.git
 cd ai-gateway
 npm install
 cp .env.example .env
-# edit .env and add at least one provider API key
+# add at least one provider API key
 npm run migrate
 npm run dev
 ```
 
-The server starts on `http://localhost:4000`. Check `GET /health` to
-confirm it's up.
+The local server defaults to `http://localhost:4000`.
 
-### Docker
+Useful commands:
 
 ```bash
-cp .env.example .env   # add your keys
+npm run dev
+npm run build
+npm test
+npm run lint
+npx tsc --noEmit
+npm run migrate
+```
+
+## Docker
+
+```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-This runs the gateway plus a Redis instance (for optional response caching).
+The repository includes Redis support for the optional shared cache. You can run without Redis; `CACHE_ENABLED=false` keeps the application on its normal in-process/data path.
 
-## Configuration
+## Environment variables
 
-All config is via environment variables — see `.env.example`. You only need
-**one** provider key to run; the gateway adapts to whatever's configured and
-reports the rest as unavailable via `/health` and `/providers`.
+All runtime configuration comes from environment variables. `.env.example` is the canonical template.
 
-### Providers
+### Provider keys
 
-Twenty-one providers are supported, all behind the same `ProviderAdapter`
-interface: Gemini, Anthropic, OpenAI, Groq, Together AI, OpenRouter,
-Hugging Face, DeepSeek, Kimi (Moonshot AI), Cerebras, Mistral, Cloudflare
-Workers AI, Fireworks AI, Inference.net, Nebius AI Studio, SambaNova Cloud,
-NVIDIA NIM, Novita AI, Baseten, ModelScope, and AI/ML API. A few notes on
-cost, since "free" means different things across them:
+Set at least one supported provider key:
 
-- **Gemini, Groq, Together, Hugging Face, OpenRouter, Cerebras, Mistral** —
-  genuinely free tiers with no card required (limits and reliability vary;
-  Cerebras's 1M tokens/day resets daily and is currently the most generous
-  raw daily volume of any provider here; Mistral's ~1B tokens/month
-  "Experiment" tier includes Codestral for coding).
-- **DeepSeek** — 5 million free tokens on signup, no card required, then
-  roughly $0.14 per million tokens after. One of the strongest
-  price-to-coding-quality ratios available.
-- **Kimi (Moonshot)** — requires a minimum $1 recharge to activate the API
-  (not free-to-start), then cheap per-token after. Notable for a very large
-  context window, so it leads the `large-context` task routing.
-- **Zero-cost alternative to DeepSeek/Kimi**: OpenRouter (free to create a
-  key for) hosts `:free`-suffixed variants of both, e.g.
-  `deepseek/deepseek-chat-v3.1:free` or `moonshotai/kimi-k2:free`. Pass
-  `forceProvider: "openrouter"` with `model: "deepseek/deepseek-chat-v3.1:free"`
-  in a `/chat` request to use them at no cost.
-
-### Newly added free / free-tier providers
-
-All ten of these are OpenAI-compatible under the hood, so they reuse the
-same `OpenAICompatibleAdapter` base class as Groq/Together/OpenRouter —
-each adapter file (`src/providers/<name>.adapter.ts`) is just a base URL,
-API key, and default model.
-
-| Provider | Env var(s) | Default model used here | Sign up |
-|---|---|---|---|
-| Cloudflare Workers AI | `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` (both required) | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | dash.cloudflare.com |
-| Fireworks AI | `FIREWORKS_API_KEY` | `accounts/fireworks/models/gpt-oss-120b` | fireworks.ai |
-| Inference.net | `INFERENCE_API_KEY` | `meta-llama/llama-3.3-70b-instruct/fp-8` | inference.net |
-| Nebius AI Studio | `NEBIUS_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct` | studio.nebius.com |
-| SambaNova Cloud | `SAMBANOVA_API_KEY` | `Meta-Llama-3.3-70B-Instruct` | cloud.sambanova.ai |
-| NVIDIA NIM | `NVIDIA_API_KEY` | `meta/llama-3.3-70b-instruct` | build.nvidia.com |
-| Novita AI | `NOVITA_API_KEY` | `meta-llama/llama-3.3-70b-instruct` | novita.ai |
-| Baseten | `BASETEN_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct` | baseten.co |
-| ModelScope | `MODELSCOPE_API_KEY` | `Qwen/Qwen2.5-72B-Instruct` | modelscope.cn |
-| AI/ML API | `AIMLAPI_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct-Turbo` | aimlapi.com |
-
-They're wired into the gateway exactly like every other provider: appended
-to `providerRegistry` in `src/providers/registry.ts` and to the end of
-`DEFAULT_FAILOVER_ORDER` in `src/config/routing.ts` — so nothing about
-existing routing, task preferences, or the failover order for the original
-eleven providers changes. To use one, set its env var(s) and either let it
-be picked up in the default chain or force it directly:
-
-```json
-{
-  "messages": [{ "role": "user", "content": "Hello from a new provider!" }],
-  "forceProvider": "fireworks"
-}
+```text
+GEMINI_API_KEY=
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+GROQ_API_KEY=
+TOGETHER_API_KEY=
+OPENROUTER_API_KEY=
+HF_API_KEY=
+DEEPSEEK_API_KEY=
+KIMI_API_KEY=
+CEREBRAS_API_KEY=
+MISTRAL_API_KEY=
+CLOUDFLARE_API_KEY=
+CLOUDFLARE_ACCOUNT_ID=
+FIREWORKS_API_KEY=
+INFERENCE_API_KEY=
+NEBIUS_API_KEY=
+SAMBANOVA_API_KEY=
+NVIDIA_API_KEY=
+NOVITA_API_KEY=
+BASETEN_API_KEY=
+MODELSCOPE_API_KEY=
+AIMLAPI_API_KEY=
 ```
 
-Cloudflare is the one exception worth calling out: it needs **both**
-`CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` set, since the endpoint URL
-itself is scoped to your Cloudflare account
-(`/client/v4/accounts/{account_id}/ai/v1`). If either is missing, the
-adapter reports itself as unconfigured and the router skips it cleanly,
-same as any provider with a missing key.
+Cloudflare Workers AI requires both `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`.
 
-Model IDs above are the free-tier defaults used out of the box; override
-per-request with the `model` field, or edit `defaultModel` in the relevant
-adapter file to change the default permanently.
+### Runtime defaults
 
-### Max output tokens per provider
+| Variable | Default | Purpose |
+|---|---:|---|
+| `NODE_ENV` | `development` | Runtime environment |
+| `PORT` | `4000` | HTTP port; Render can provide its own `PORT` |
+| `DATABASE_URL` | `./data/gateway.db` | SQLite database path |
+| `CORS_ORIGIN` | `*` | Allowed origin(s), comma-separated |
+| `LOG_LEVEL` | `info` | Winston log level |
+| `REQUEST_TIMEOUT_MS` | `30000` | Individual provider/request timeout |
+| `GATEWAY_REQUEST_BUDGET_MS` | `60000` | Total wall-clock budget across a failover chain |
+| `MAX_RETRIES` | `2` | Retries for retryable provider failures |
+| `MAX_PROMPT_LENGTH` | `3500000` | Prompt character limit |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window |
+| `RATE_LIMIT_MAX` | `60` | Strict chat/default API limit per window |
+| `DAILY_COST_BUDGET_USD` | `0` | Rolling 24h estimated spend guard; `0` disables |
+| `CACHE_ENABLED` | `false` | Enables Redis L2 cache when true |
+| `CACHE_TTL_SECONDS` | `300` | Cache TTL |
+| `REDIS_URL` | empty | Redis-compatible connection URL |
 
-Every adapter clamps a request's `maxTokens` to its own real ceiling before
-sending it, so asking for more than a provider allows fails over cleanly
-instead of hard-erroring. Verified ceilings (checked against each
-provider's own docs):
+### Redis cache
 
-| Provider | Max output tokens | Verified? |
-|---|---|---|
-| OpenAI (gpt-5-nano) | 128,000 | ✅ verified — OpenAI docs |
-| Gemini (2.5 Flash-Lite) | 65,536 | ✅ verified — Google docs |
-| Anthropic (Haiku 4.5) | 64,000 | ✅ verified — Anthropic docs |
-| Together (Llama-3.3-70B-Instruct-Turbo) | 64,000 | ⚠️ no separate cap published; context-bound estimate (131K context, one listing shows "unlimited" output) |
-| Mistral (Small 4) | 64,000 | ⚠️ no separate cap published; context-bound estimate (256K shared input+output budget) |
-| Cerebras (gpt-oss-120b) | 40,960 | ✅ verified — Cerebras model config |
-| Groq (llama-3.3-70b-versatile) | 32,768 | ✅ verified — Groq docs |
-| OpenRouter (llama-3.3-70b-instruct) | 16,384 | ✅ verified — OpenRouter model page |
-| DeepSeek (deepseek-v4-flash) | 384,000 | ✅ verified — DeepSeek docs |
-| Hugging Face | 8,192 | ⚠️ genuinely unverifiable — HF's router dynamically proxies to a different backend per request, so there's no single fixed ceiling to check |
-| Kimi (k2.6) | 8,192 | ⚠️ conservative estimate, not individually verified |
+Redis is optional. When enabled, the cache hierarchy is:
 
-If you confirm a higher real ceiling for any of the unverified ones, update
-`maxOutputTokens` in that adapter's constructor (`src/providers/*.adapter.ts`).
-
-**Migration complete:** DeepSeek's old `deepseek-chat` model ID reached its
-deprecation deadline on **2026-07-24** and has been fully replaced with
-`deepseek-v4-flash` in `src/providers/deepseek.adapter.ts` (also a real
-upgrade: max output rose from 8,000 to 384,000 tokens). No action needed
-unless DeepSeek announces a further migration.
-
-Task-based routing (`taskType: "coding"`, `"reasoning"`, etc.) automatically
-prefers whichever provider tends to perform best for that kind of work —
-see `src/config/routing.ts` to adjust the priority order.
-
-
-## How to use this AI Gateway like an API in your own projects
-
-You can use this gateway exactly the same way you use official APIs from OpenAI or Anthropic in your code. By pointing your API base URL to this gateway, you get automatic failover and routing without changing your core application logic.
-
-- **Base URL**: `https://ai-gateway-wx35.onrender.com`
-- **Auth**: There is currently no authentication required. The endpoint is completely open.
-- **Warning**: This is perfectly fine for personal scripts, local development, or quick experiments. However, it is **unsafe for public production use** unless you add an API key authentication layer, as anyone could consume your configured provider quotas.
-
-### Practical Code Examples
-
-#### cURL
-```bash
-curl -X POST https://ai-gateway-wx35.onrender.com/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {
-        "role": "user",
-        "content": "Write a short poem about a server that never goes down."
-      }
-    ],
-    "taskType": "creative"
-  }'
+```text
+L1 in-process memory
+       ↓ miss
+L2 Redis
+       ↓ miss / Redis unavailable
+normal SQLite/provider operation
 ```
 
-#### Python (using `requests`)
-This pattern is similar to how the existing `job_search.py` script utilizes the gateway for robust multi-step reasoning.
-```python
-import requests
+A Redis outage is treated as a cache failure, not an application failure. The application continues using the existing local/database/provider path.
 
-API_BASE = "https://ai-gateway-wx35.onrender.com"
+Enable it with:
 
-def generate_text(prompt):
-    payload = {
-        "messages": [{"role": "user", "content": prompt}],
-        "taskType": "coding" # Optional: hints the router to pick the best model for the task
-    }
-
-    response = requests.post(f"{API_BASE}/chat", json=payload)
-    response.raise_for_status()
-
-    data = response.json()
-    return data['message']['content']
-
-# Example usage
-print(generate_text("Explain the difference between threading and multiprocessing in Python."))
+```text
+CACHE_ENABLED=true
+CACHE_TTL_SECONDS=300
+REDIS_URL=<redis-compatible-url>
 ```
 
-#### Node.js (using `fetch`)
-```javascript
-const API_BASE = "https://ai-gateway-wx35.onrender.com";
+## API endpoints
 
-async function chatWithGateway(userMessage) {
-  const response = await fetch(`${API_BASE}/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      messages: [{ role: 'user', content: userMessage }],
-      taskType: 'reasoning'
-    })
-  });
+### Chat
 
-  if (!response.ok) {
-    throw new Error(`Gateway error: ${response.statusText}`);
-  }
+`POST /chat`  
+Standard non-streaming chat request.
 
-  const data = await response.json();
-  console.log("Response:", data.message.content);
-  console.log("Providers tried:", data.metadata.chain); // See the failover chain!
-}
+`POST /chat/stream`  
+Streaming chat request.
 
-chatWithGateway("What are the architectural benefits of the actor model?");
-```
+`POST /chat` and `POST /chat/stream` use a 50 MB JSON parser to preserve large vision payloads.
 
-### Feature Examples
+### Health and provider discovery
 
-#### Basic Chat Request
-```json
-{
-  "messages": [{ "role": "user", "content": "Hello, world!" }]
-}
-```
+`GET /health`  
+Provider health/status information.
 
-#### Forcing a Provider
-Bypass automatic routing and strictly use a specific provider.
-```json
-{
-  "messages": [{ "role": "user", "content": "I specifically want Claude's opinion." }],
-  "forceProvider": "anthropic"
-}
-```
+`GET /health/models`  
+Checks configured provider model availability, including Gemini and Anthropic.
 
-#### Selecting a Free OpenRouter Model Explicitly
-Leverage zero-cost models available via OpenRouter.
-```json
-{
-  "messages": [{ "role": "user", "content": "Help me refactor this code..." }],
-  "forceProvider": "openrouter",
-  "model": "deepseek/deepseek-chat-v3.1:free"
-}
-```
+`GET /providers`  
+Lists configured/available providers.
 
-#### Multi-turn Conversation
-Pass a `sessionId` to append to an existing conversation stored in the gateway's SQLite database.
-```json
-{
-  "sessionId": "a1b2c3d4-e5f6-7890",
-  "messages": [{ "role": "user", "content": "Can you explain that last point in more detail?" }]
-}
-```
+These lightweight read endpoints use the generous read rate limiter.
 
-#### Attaching an Image (Vision Request)
+### Analytics
+
+`GET /analytics`  
+Usage, cost, request, and failover analytics.
+
+The analytics service can use the optional Redis L2 cache, while the 24-hour cost guard continues to use the live persistence path for budget enforcement.
+
+### Sessions, projects, workspace, and uploads
+
+The gateway also exposes the existing session, project, workspace, and upload APIs. The upload route keeps its existing Multer file-size limit; the new 2 MB JSON default does not replace the upload-specific handling.
+
+## Chat request example
+
 ```json
 {
   "messages": [
     {
       "role": "user",
-      "content": "What is in this image?",
-      "image": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD..."
+      "content": "Explain how provider failover works."
+    }
+  ],
+  "taskType": "reasoning"
+}
+```
+
+Optional routing controls include `taskType`, `forceProvider`, and `model`.
+
+Example forcing a provider:
+
+```json
+{
+  "messages": [
+    { "role": "user", "content": "Give me a concise code review." }
+  ],
+  "forceProvider": "anthropic"
+}
+```
+
+### Vision request shape
+
+The current chat schema uses `messages[].images[]`:
+
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Describe this image.",
+      "images": [
+        {
+          "mimeType": "image/jpeg",
+          "base64": "..."
+        }
+      ]
     }
   ]
 }
 ```
 
-#### Response Controls
-Adjust generation parameters.
-```json
-{
-  "messages": [{ "role": "user", "content": "Write 5 unusual names for a pet cat." }],
-  "temperature": 0.9,
-  "maxTokens": 200
-}
+Each image attachment is validated as an `image/*` MIME type with a base64 payload limit, and the router restricts image requests to vision-capable providers.
+
+## Response and observability
+
+Successful chat responses include the existing message and metadata fields, including provider/model information and the failover chain.
+
+Every HTTP request receives an `X-Request-ID` correlation ID. The same correlation ID is threaded into relevant router, orchestrator, health, and error logs so a request can be traced across failover and provider-health events.
+
+## Reliability and hardening
+
+The current `main` includes the following production hardening changes:
+
+1. **Global request budget** — a single wall-clock deadline applies across the provider failover chain so a full outage cannot run indefinitely.
+2. **Retry classification** — authentication, not-found, suspended-account, and insufficient-credit conditions are non-retryable for the same provider, while failover to other providers remains possible.
+3. **24-hour cost guard** — an optional rolling spend budget returns HTTP `429` when exceeded.
+4. **Split rate limiting** — `/health` and `/providers` are generous read endpoints; chat traffic uses the stricter limiter.
+5. **Model availability checks** — Gemini and Anthropic participate in `/health/models` alongside the other adapters.
+6. **Correlation IDs** — UUID request IDs are propagated through service logging.
+7. **Production logging** — production logs are emitted to stdout instead of depending on persistent log files.
+8. **Graceful shutdown** — `SIGTERM`/`SIGINT` stops new HTTP connections, drains active requests, closes optional Redis, and closes SQLite with a bounded fallback.
+9. **Optional Redis L2** — Redis can back analytics/model-validation caches while the in-process cache remains the fast path and fallback.
+10. **Body-size hardening** — normal JSON is capped at 2 MB; chat JSON remains at 50 MB for existing image/vision payloads.
+
+## Security note
+
+The gateway does not currently implement API-key authentication for its own HTTP API. If you expose the backend publicly, add an authentication/authorization layer before treating it as a shared production service. Provider rate limits and the gateway's own rate limiter/cost guard are not substitutes for client authentication.
+
+## Render deployment
+
+See [docs/RENDER_DEPLOYMENT.md](docs/RENDER_DEPLOYMENT.md) for production environment variables, Redis setup, and SQLite persistence.
+
+Important for Render + SQLite: the image runs as the non-root `gateway` user and already owns `/app/data`. If you attach a Render persistent disk, mount it at `/app/data` and use:
+
+```text
+DATABASE_URL=/app/data/gateway.db
 ```
 
-#### Full Sample Response JSON
-The gateway returns not just the answer, but metadata about how it arrived there (the failover chain, timing, and cost).
-```json
-{
-  "message": {
-    "role": "assistant",
-    "content": "1. Sir Pounce-a-lot\n2. Chairman Meow\n3. Purr-lock Holmes\n4. Cat-rick Swayze\n5. The Great Catsby"
-  },
-  "metadata": {
-    "provider": "groq",
-    "model": "llama-3.3-70b-versatile",
-    "latencyMs": 850,
-    "cost": 0.00015,
-    "chain": [
-      {
-        "provider": "gemini",
-        "model": "gemini-2.5-flash",
-        "error": "Rate limit exceeded",
-        "latencyMs": 200
-      },
-      {
-        "provider": "groq",
-        "model": "llama-3.3-70b-versatile",
-        "latencyMs": 850
-      }
-    ]
-  }
-}
-```
+Do not point the application at `/var/data` unless that directory is explicitly created and writable by the service user.
 
-### Other Useful Endpoints
-- `GET /health` - Check the latency and status of all configured providers.
-- `GET /providers` - List which AI providers are currently active in your gateway.
-- `GET /analytics` - View token usage, request counts, and failover statistics.
-- `POST /uploads` - Upload a document (PDF, DOCX, TXT) to extract text for use in your prompts.
-- `GET /projects` - List active persistent workspaces (projects).
+## Tests and CI
 
+The project uses Jest, TypeScript, and ESLint. The CI pipeline validates TypeScript, linting, tests, and build; Docker and Vercel checks run in the repository's pull-request workflow.
 
-## API
-
-| Method | Route | Purpose |
-|---|---|---|
-| POST | `/chat` | Send a chat request; routes + fails over automatically |
-| POST | `/chat/stream` | Same, streamed via SSE |
-| GET | `/providers` | List all providers and which are configured |
-| GET | `/health` | Per-provider health/latency snapshot |
-| GET | `/analytics` | Usage, cost, and success-rate summary |
-| GET/POST | `/sessions` | List / create chat sessions |
-| GET | `/sessions/:id/messages` | Full conversation history |
-| DELETE | `/session/:id` | Delete a session |
-| POST/GET | `/projects` | Create / list projects (persistent project memory) |
-| GET/PATCH | `/projects/:id` | Read / update project memory |
-| PUT/GET/DELETE | `/projects/:id/files` | Workspace file management, versioned |
-| POST/GET | `/projects/:id/snapshots` | Create/list/restore full project snapshots |
-| POST | `/uploads` | Upload a PDF/DOCX/text file; extracts text (optionally saves into a project's workspace via `projectId` field) |
-
-### Example: basic chat request
+Recommended local checks before opening a PR:
 
 ```bash
-curl -X POST http://localhost:4000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-        "messages": [{ "role": "user", "content": "Explain event loops in Node.js" }],
-        "taskType": "reasoning"
-      }'
+npx tsc --noEmit
+npm run lint
+npx jest --runInBand
+npm run build
 ```
 
-### Example: project-aware coding session
+## Project layout
 
-```bash
-# 1. Create a project
-curl -X POST http://localhost:4000/projects \
-  -d '{"name":"My App","goal":"Build a REST API"}' -H 'Content-Type: application/json'
-
-# 2. Chat with project context attached — the orchestrator injects
-#    project memory + relevant files automatically, and if the provider
-#    fails mid-project, the next one picks up with full context intact.
-curl -X POST http://localhost:4000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-        "projectId": "<id from step 1>",
-        "taskType": "coding",
-        "messages": [{ "role": "user", "content": "Add a /users endpoint" }]
-      }'
-```
-
-## Frontend (React dashboard)
-
-A chat UI lives in `frontend/` — dark, technical "control room" aesthetic
-built around the one thing this product actually does: route around failure.
-Every assistant reply shows its **routing chain** (which providers were
-tried, which one answered, in what time), a live provider health bar in the
-header, and a slide-over analytics panel.
-
-```bash
-cd frontend
-npm install
-cp .env.example .env   # points at http://localhost:4000 by default
-npm run dev
-```
-
-Opens on `http://localhost:5173`. Make sure the backend (`npm run dev` in
-the repo root) is running first — the frontend is just a client for it.
-
-```bash
-npm run build   # production build to frontend/dist
-```
-
-### What you'll see
-
-- **Sidebar** — chat sessions, persisted server-side, switch between them freely.
-- **Header controls** — pick a task type (routes to the best-suited provider
-  chain) or force a specific provider to test failover deliberately.
-- **Health bar** — live dot per provider (green = healthy, amber = degraded/
-  rate-limited, red = down), polled every 8s.
-- **Routing chain per message** — e.g. `gemini →(failed) groq · llama-3.3-70b-versatile · failover`.
-  This is the actual feature, made visible instead of hidden.
-- **Analytics panel** — total requests, success rate, failover count, cost,
-  and per-provider breakdown.
-- **Project switcher** — create a persistent project, attach it to a chat,
-  and the orchestrator automatically injects that project's goal, files,
-  and decisions as context on every message.
-- **File uploads** — attach a PDF, DOCX, or text file from the composer.
-  The backend extracts the text and folds it into your next message; if a
-  project is active, the file is also saved into that project's workspace
-  so later requests can reference it automatically.
-- **Image input (vision)** — attach an image and it's sent as real image
-  data to a vision-capable provider (Gemini, Anthropic, or OpenAI — the
-  only three configured here whose default model actually accepts image
-  input), the same way Claude.ai or ChatGPT handle a photo. The router
-  automatically restricts image-bearing requests to vision-capable
-  providers only; if none are configured, you get a clear error naming
-  which keys would enable it, instead of the image silently being ignored.
-  Note: unlike text, attached images are not currently persisted into
-  conversation history — they apply to the turn you send them in.
-
-## Testing
-
-
-```bash
-npm test              # full suite (35 tests)
-npm run test:watch    # watch mode
-npx jest --coverage   # with coverage report
-```
-
-## Folder structure
-
-```
+```text
 src/
-  config/       env + task-routing + pricing config
-  providers/    one adapter per LLM provider + shared registry
-  services/     router, orchestrator, project memory, workspace, analytics
-  controllers/  request handlers
-  routes/       Express route definitions
-  middleware/   validation, rate limiting, error handling
-  database/     SQLite schema + client
-  types/        shared TypeScript types
-  __tests__/    Jest test suite
+  config/                 environment + routing configuration
+  controllers/            HTTP controllers
+  database/               SQLite client, schema, migration
+  middleware/             rate limits, validation, request IDs, body limits
+  providers/              provider adapters + registry
+  routes/                 Express route registration
+  services/               router, orchestrator, analytics, health, projects, uploads
+  types/                  shared TypeScript types
+  utils/                  logger, Redis cache, graceful shutdown, helpers
+  __tests__/              Jest tests
+frontend/
+  React dashboard and API client
 ```
 
-## Troubleshooting
+## Development principles
 
-- **`503 No providers are configured`** — set at least one `*_API_KEY` in `.env`.
-- **`502 All providers failed`** — every configured provider rejected the
-  request; check `/health` for per-provider error detail.
-- **`400 Invalid request body` on a large paste** — the request body has a
-  `MAX_PROMPT_LENGTH` cap (default 3.5M characters, ~875K tokens — enough
-  for roughly 50k+ lines of code). If you still hit this on something
-  larger, raise `MAX_PROMPT_LENGTH` in `.env`, but note the actual LLM call
-  will still fail over if it exceeds whichever provider's real context
-  window ends up handling it (Gemini 2.5 Flash-Lite's 1M-token window is
-  the largest configured here).
-- **SQLite locked errors under heavy load** — WAL mode is enabled by
-  default, but very high concurrency may still want a move to Postgres
-  (swap out `src/database/client.ts`).
+Keep the core architecture stable:
 
-## License
+```text
+router → orchestrator → provider adapters → SQLite
+```
 
-MIT — use freely, including as a portfolio project.
+Hardening changes should preserve existing API response shapes and frontend contracts. Prefer small, isolated changes with regression tests and keep `PROJECT_OVERVIEW.md` synchronized when architecture or environment behavior changes.
