@@ -1,9 +1,10 @@
 import http from 'http';
-import { createGracefulShutdown } from '../server';
+import { createGracefulShutdown } from '../utils/graceful-shutdown';
 
 describe('graceful server shutdown', () => {
   afterEach(() => {
     jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   it('drains the HTTP server before closing the database', () => {
@@ -45,7 +46,5 @@ describe('graceful server shutdown', () => {
 
     expect(closeAllConnections).toHaveBeenCalledTimes(1);
     expect(closeDatabase).not.toHaveBeenCalled();
-
-    jest.useRealTimers();
   });
 });
