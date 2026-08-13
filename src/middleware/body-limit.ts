@@ -3,31 +3,22 @@ import { json, RequestHandler } from 'express';
 const DEFAULT_BODY_LIMIT = '2mb';
 const LARGE_BODY_LIMIT = '50mb';
 
-function hasImagePayload(req: Parameters<RequestHandler>[0]): boolean {
-  const body = req.body;
-  if (!body || !Array.isArray(body.messages)) return false;
-
-  return body.messages.some(
-    (message: unknown) =>
-      typeof message === 'object' &&
-      message !== null &&
-      'image' in message &&
-      typeof (message as { image?: unknown }).image === 'string' &&
-      (message as { image: string }).image.length > 0
-  );
+function isChatPath(req: Parameters<RequestHandler>[0]): boolean {
+  if (req.method !== 'POST') return false;
+  const path = `${req.baseUrl}${req.path}`.replace(/\/$/, '') || '/';
+  return path === '/chat' || path === '/chat/stream';
 }
 
 /**
- * Parses normal JSON requests with a small default limit, while allowing
- * image-bearing chat requests to use the existing large limit.
- *
- * Note: Express's JSON parser runs before req.body exists, so this middleware
- * cannot inspect a parsed body to choose its limit. The route-level parser
- * must therefore be used for chat requests; this handler is intended for
- * non-chat JSON traffic only.
+ * Parses non-chat JSON requests with the smaller default limit.
+ * Chat requests are skipped here and parsed by the route-level 50mb parser.
  */
-export const smallJsonBodyParser = json({ limit: DEFAULT_BODY_LIMIT });
+export const smallJsonBodyParser = json({
+  limit: DEFAULT_BODY_LIMIT,
+  type: (req) => !isChatPath(req),
+});
 
+/** Parser used only by POST /chat and POST /chat/stream. */
 export const largeJsonBodyParser = json({ limit: LARGE_BODY_LIMIT });
 
-export { DEFAULT_BODY_LIMIT, LARGE_BODY_LIMIT, hasImagePayload };
+export { DEFAULT_BODY_LIMIT, LARGE_BODY_LIMIT };
