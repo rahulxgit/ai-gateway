@@ -40,13 +40,6 @@ function toRecord(row: AnalyticsRow): AnalyticsRecord {
 
 export type AnalyticsSummary = ReturnType<typeof computeAnalyticsSummary>;
 
-// getAnalyticsSummary runs 3 aggregation queries (full table scans over
-// `analytics` bounded by the 24h window) on every call. The frontend
-// AnalyticsPanel polls GET /analytics every 15s per open panel, and this
-// runs on every call with no caching — heavy and unnecessary since the
-// numbers don't need sub-5-second freshness for a dashboard. A short TTL
-// cache avoids recomputing on every poll while staying close enough to
-// real-time.
 const ANALYTICS_CACHE_TTL_MS = 5_000;
 let cachedSummary: AnalyticsSummary | null = null;
 let cachedAt = 0;
@@ -93,12 +86,25 @@ export function recordAnalytics(input: {
   );
 }
 
+function get24hWindowStart(): string {
+  return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+}
+
+/** Returns the live estimated cost in the same rolling 24h window as analytics. */
+export function get24hEstimatedCostUsd(): number {
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(estimated_cost_usd), 0) as totalCostUsd
+       FROM analytics
+       WHERE created_at >= ?`
+    )
+    .get(get24hWindowStart()) as { totalCostUsd: number };
+
+  return Number(row.totalCostUsd) || 0;
+}
+
 function computeAnalyticsSummary() {
-  // All summary figures are a rolling 24-hour window, not lifetime totals.
-  // "Rolling" means it self-resets continuously: a request that happened
-  // 24 hours and 1 minute ago simply falls out of every query below on its
-  // own, with no cron job or manual reset step required.
-  const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const windowStart = get24hWindowStart();
 
   const totals = db
     .prepare(
@@ -136,9 +142,6 @@ function computeAnalyticsSummary() {
 
   return {
     totalRequests: totals.totalRequests,
-    // Kept for API backward-compatibility with older frontend builds —
-    // now equal to totalRequests since the whole summary is already
-    // scoped to the trailing 24h window rather than lifetime.
     dailyRequests: totals.totalRequests,
     totalTokens: totals.totalTokens,
     estimatedTotalCostUsd: Number(totals.totalCostUsd.toFixed(4)),
