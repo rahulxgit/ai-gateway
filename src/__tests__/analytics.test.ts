@@ -41,48 +41,48 @@ function insertAt(hoursAgo: number, overrides: Partial<Parameters<typeof recordA
 }
 
 describe('getAnalyticsSummary — rolling 24h window', () => {
-  it('includes requests from within the last 24 hours', () => {
+  it('includes requests from within the last 24 hours', async () => {
     insertAt(1);
     insertAt(23.5);
-    const summary = getAnalyticsSummary();
+    const summary = await getAnalyticsSummary();
     expect(summary.totalRequests).toBe(2);
     expect(summary.windowHours).toBe(24);
   });
 
-  it('excludes requests older than 24 hours — the window self-resets', () => {
+  it('excludes requests older than 24 hours — the window self-resets', async () => {
     insertAt(25);
     insertAt(48);
-    const summary = getAnalyticsSummary();
+    const summary = await getAnalyticsSummary();
     expect(summary.totalRequests).toBe(0);
     expect(summary.byProvider).toHaveLength(0);
   });
 
-  it('mixes in-window and out-of-window requests correctly', () => {
+  it('mixes in-window and out-of-window requests correctly', async () => {
     insertAt(1, { provider: 'anthropic' });
     insertAt(2, { provider: 'anthropic' });
     insertAt(30, { provider: 'anthropic' }); // outside the window, excluded
 
-    const summary = getAnalyticsSummary();
+    const summary = await getAnalyticsSummary();
     expect(summary.totalRequests).toBe(2);
     expect(summary.byProvider).toHaveLength(1);
     expect(summary.byProvider[0]).toMatchObject({ provider: 'anthropic', requests: 2 });
   });
 
-  it('dailyRequests mirrors totalRequests now that the whole summary is windowed', () => {
+  it('dailyRequests mirrors totalRequests now that the whole summary is windowed', async () => {
     insertAt(0.5);
-    const summary = getAnalyticsSummary();
+    const summary = await getAnalyticsSummary();
     expect(summary.dailyRequests).toBe(summary.totalRequests);
   });
 
-  it('only counts failovers that happened within the window', () => {
+  it('only counts failovers that happened within the window', async () => {
     insertAt(1, { failoverFrom: 'gemini', provider: 'anthropic' });
     insertAt(26, { failoverFrom: 'gemini', provider: 'anthropic' });
-    const summary = getAnalyticsSummary();
+    const summary = await getAnalyticsSummary();
     expect(summary.failoverEvents).toBe(1);
   });
 
-  it('returns a successRate of 1 when there are zero requests in the window', () => {
-    const summary = getAnalyticsSummary();
+  it('returns a successRate of 1 when there are zero requests in the window', async () => {
+    const summary = await getAnalyticsSummary();
     expect(summary.totalRequests).toBe(0);
     expect(summary.successRate).toBe(1);
   });

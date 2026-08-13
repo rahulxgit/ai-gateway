@@ -1,10 +1,12 @@
 import { ModelAvailabilityResult, ProviderName } from '../types';
 import { providerRegistry, listConfiguredProviders } from '../providers/registry';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
+import { CACHE_KEYS, deleteRedisCache, getRedisCache, setRedisCache } from '../utils/redis-cache';
 
 // Providers keep deprecating/renaming default models out from under us —
 // this bit the gateway in production when Groq pulled
-// meta-llama/llama-4-scout-17b-16e-instruct without any code change on our
+// meta-llama/llama-4-scout-17b-16-instruct without any code change on our
 // side, and the failure only surfaced as a "model not found" error on a
 // live request. This runs a best-effort check at startup (and can be
 // re-run on demand) so a dead default model shows up as a clear warning
@@ -24,15 +26,34 @@ const MODEL_VALIDATION_CACHE_TTL_MS = 5 * 60 * 1000;
 let cachedResults: ModelValidationSummary[] | null = null;
 let cachedAt = 0;
 
+function getModelValidationCacheKey(): string {
+  const configured = listConfiguredProviders().map((name) => `${name}:${providerRegistry[name].defaultModel}`).sort();
+  return `${CACHE_KEYS.modelValidationPrefix}${configured.join('|') || 'none'}`;
+}
+
 export function invalidateModelValidationCache(): void {
   cachedResults = null;
   cachedAt = 0;
+  void deleteRedisCache(getModelValidationCacheKey());
 }
 
 export async function validateConfiguredModels(): Promise<ModelValidationSummary[]> {
   const now = Date.now();
   if (cachedResults && now - cachedAt < MODEL_VALIDATION_CACHE_TTL_MS) {
     return cachedResults;
+  }
+
+  const cacheKey = getModelValidationCacheKey();
+  const redisResults = await getRedisCache(cacheKey);
+  if (redisResults) {
+    try {
+      const parsed = JSON.parse(redisResults) as ModelValidationSummary[];
+      cachedResults = parsed;
+      cachedAt = now;
+      return parsed;
+    } catch {
+      // Ignore malformed shared-cache data and revalidate providers.
+    }
   }
 
   const configured = listConfiguredProviders();
@@ -64,5 +85,6 @@ export async function validateConfiguredModels(): Promise<ModelValidationSummary
 
   cachedResults = results;
   cachedAt = now;
+  await setRedisCache(cacheKey, JSON.stringify(results), env.cacheTtlSeconds);
   return results;
 }
