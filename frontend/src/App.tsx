@@ -8,6 +8,12 @@ import { AnalyticsPanel } from './components/AnalyticsPanel';
 import { api } from './lib/api';
 import type { ChatMessage, ChatSession, ImageAttachment, ProjectMemory, ProviderName, TaskType } from './types';
 
+const STARTER_PROMPTS = [
+  'Review my code and suggest production improvements',
+  'Explain a complex technical topic clearly',
+  'Help me debug an error step by step',
+];
+
 export default function App() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -20,12 +26,11 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
-  // Open by default on desktop/laptop (Claude-app default), closed by
-  // default on mobile/tablet where it would otherwise cover the chat.
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
 
   const refreshSessions = () => {
     api.listSessions().then(setSessions).catch(() => {});
@@ -42,7 +47,7 @@ export default function App() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, sending]);
 
   const selectSession = async (id: string) => {
     setActiveSessionId(id);
@@ -56,6 +61,7 @@ export default function App() {
       );
     } catch {
       setMessages([]);
+      setError('Could not load this conversation.');
     }
   };
 
@@ -63,6 +69,7 @@ export default function App() {
     setActiveSessionId(null);
     setMessages([]);
     setError(null);
+    requestAnimationFrame(() => composerRef.current?.querySelector('textarea')?.focus());
   };
 
   const deleteSession = async (id: string) => {
@@ -81,9 +88,6 @@ export default function App() {
 
   const send = async (apiText: string, displayText: string, images?: ImageAttachment[], attachmentNames?: string[]) => {
     setError(null);
-    // Store the clean, user-typed text for display — the full extracted
-    // file dump (apiText) only ever goes to the backend/model, never
-    // rendered in the chat bubble.
     const userMessage: ChatMessage = { role: 'user', content: displayText, images, attachmentNames };
     setMessages((prev) => [...prev, userMessage]);
     setSending(true);
@@ -96,18 +100,6 @@ export default function App() {
         taskType,
         forceProvider: forceProvider === 'auto' ? undefined : forceProvider,
         model: modelOverride || undefined,
-        // Only coding tasks (long code/file output) need headroom above
-        // the backend's own sane default (DEFAULT_MAX_TOKENS = 1024 in
-        // openai-compatible.adapter.ts). Sending 64000 unconditionally on
-        // every request — including a one-word "hi" — makes every
-        // provider adapter reserve its full ceiling upfront via
-        // Math.min(maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
-        // which reintroduces the exact Groq TPM bug documented as bug #11
-        // in PROJECT_OVERVIEW.md (a low-TPM provider 413s before
-        // generating anything). Leaving maxTokens undefined for
-        // non-coding tasks lets the backend's per-provider default
-        // budget apply as intended; each provider still clamps up to its
-        // own real ceiling if the caller does ask for more.
         maxTokens: taskType === 'coding' ? 64000 : undefined,
       });
 
@@ -134,79 +126,41 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-[100dvh] bg-canvas text-ink overflow-hidden">
+    <div className="flex h-[100dvh] min-h-0 overflow-hidden bg-canvas text-ink selection:bg-signal-dim/40">
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="border-b border-hairline bg-panel">
-          {/* Mobile compact header: title, analytics, sidebar toggle */}
-          <div className="flex items-center justify-between gap-2 px-3 py-2.5 lg:hidden">
-            <div className="flex min-w-0 items-center gap-2">
+        <header className="sticky top-0 z-20 border-b border-hairline/80 bg-canvas/90 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-3 py-2.5 md:px-5 lg:px-6">
+            <div className="flex min-w-0 items-center gap-2.5">
               <button
+                type="button"
                 onClick={() => setSidebarOpen((o) => !o)}
-                className={`shrink-0 rounded-md border p-2 transition ${
-                  sidebarOpen ? 'border-signal-dim text-signal' : 'border-hairline text-ink-muted hover:text-ink'
-                }`}
-                aria-label="Toggle sidebar"
+                className={`icon-button ${sidebarOpen ? 'icon-button-active' : ''}`}
+                aria-label="Toggle conversations sidebar"
+                aria-expanded={sidebarOpen}
+                title="Chats & projects"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
-              <span className="truncate font-mono text-xs font-semibold tracking-tight text-ink">
-                {activeProject ? activeProject.name : 'AI GATEWAY'}
-              </span>
-            </div>
-            <button
-              onClick={() => setShowAnalytics(true)}
-              className="shrink-0 rounded-md border border-hairline p-2 text-ink-muted transition hover:text-signal"
-              aria-label="Analytics"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M4 20V10M12 20V4M20 20v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 border-t border-hairline px-3 py-2 lg:hidden">
-            <RoutingControls
-              taskType={taskType}
-              onTaskTypeChange={setTaskType}
-              forceProvider={forceProvider}
-              onForceProviderChange={setForceProvider}
-              model={modelOverride}
-              onModelChange={setModelOverride}
-            />
-            <HealthBar />
-          </div>
-
-          {/* Desktop/laptop header: everything inline, sidebar toggle on
-              the far right to match its right-docked position (Claude-app
-              convention). */}
-          <div className="hidden flex-wrap items-center justify-between gap-y-2 px-5 py-3 lg:flex">
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
-              <button
-                onClick={() => setSidebarOpen((o) => !o)}
-                className={`shrink-0 rounded-md border p-1.5 transition ${
-                  sidebarOpen ? 'border-signal-dim text-signal' : 'border-hairline text-ink-muted hover:text-ink'
-                }`}
-                aria-label="Toggle sidebar"
-                title="Toggle sidebar (chats & projects)"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
                   <path d="M9 4v16" stroke="currentColor" strokeWidth="1.6" />
                 </svg>
               </button>
-              <span className="shrink-0 font-mono text-sm font-semibold tracking-tight text-ink">
-                AI GATEWAY
-              </span>
-              {activeProject && (
-                <>
-                  <span className="text-ink-faint">/</span>
-                  <span className="truncate text-sm text-ink-muted" title={activeProject.name}>
-                    {activeProject.name}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="brand-mark" aria-hidden="true">AG</span>
+                  <span className="truncate text-sm font-semibold tracking-tight text-ink">AI Gateway</span>
+                  <span className="hidden rounded-full border border-ok-dim/70 bg-ok/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ok sm:inline-flex">
+                    live
                   </span>
-                </>
-              )}
-              <span className="text-ink-faint">/</span>
+                </div>
+                {activeProject && (
+                  <div className="mt-0.5 hidden truncate pl-8 text-[11px] text-ink-faint sm:block">
+                    {activeProject.name}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="hidden items-center gap-2 lg:flex">
               <RoutingControls
                 taskType={taskType}
                 onTaskTypeChange={setTaskType}
@@ -216,60 +170,113 @@ export default function App() {
                 onModelChange={setModelOverride}
               />
             </div>
-            <div className="flex shrink-0 items-center gap-3">
+
+            <div className="flex items-center gap-2">
               <HealthBar />
               <button
+                type="button"
                 onClick={() => setShowAnalytics(true)}
-                className="rounded-md border border-hairline px-2.5 py-1 font-mono text-[12px] text-ink-muted transition hover:border-signal-dim hover:text-signal"
+                className="rounded-lg border border-hairline bg-panel/70 px-2.5 py-1.5 font-mono text-[11px] text-ink-muted transition hover:border-signal-dim hover:bg-panel hover:text-ink"
               >
                 analytics
               </button>
             </div>
           </div>
+
+          <div className="border-t border-hairline/60 px-3 py-2.5 lg:hidden">
+            <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2">
+              <RoutingControls
+                taskType={taskType}
+                onTaskTypeChange={setTaskType}
+                forceProvider={forceProvider}
+                onForceProviderChange={setForceProvider}
+                model={modelOverride}
+                onModelChange={setModelOverride}
+              />
+            </div>
+          </div>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-3 py-5 md:px-6 md:py-6 lg:px-8">
-          {/* Claude-style centered chat column: fixed max width regardless
-              of how much horizontal room the viewport has, so the chat
-              never stretches edge-to-edge on wide laptop/desktop screens. */}
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-3 py-6 md:px-6 md:py-8 lg:px-8">
+          <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
             {messages.length === 0 && (
-              <div className="flex h-[55vh] flex-col items-center justify-center text-center md:h-[60vh]">
-                <div className="mb-3 font-mono text-xs uppercase tracking-widest text-ink-faint">
-                  route · retry · failover
+              <section className="relative overflow-hidden rounded-3xl border border-hairline bg-panel/55 px-5 py-10 shadow-[0_20px_80px_rgba(0,0,0,0.18)] md:px-10 md:py-14">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(240,163,57,0.10),transparent_38%),radial-gradient(circle_at_bottom_left,rgba(79,209,174,0.08),transparent_35%)]" />
+                <div className="relative mx-auto max-w-2xl text-center">
+                  <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-signal-dim/50 bg-signal/10 font-mono text-sm font-semibold text-signal shadow-[0_0_30px_rgba(240,163,57,0.10)]">
+                    AG
+                  </div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ink-faint">route · retry · failover</p>
+                  <h1 className="mt-3 text-2xl font-semibold tracking-tight text-ink md:text-4xl">
+                    One interface. Multiple models. Built for reliability.
+                  </h1>
+                  <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-ink-muted md:text-base">
+                    Ask a question, attach a document or image, and let the gateway choose the best configured provider—switching automatically when a provider is slow, rate-limited, or unavailable.
+                  </p>
+
+                  <div className="mt-7 grid gap-2 text-left sm:grid-cols-3">
+                    {STARTER_PROMPTS.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => {
+                          requestAnimationFrame(() => {
+                            const textarea = composerRef.current?.querySelector('textarea');
+                            if (textarea) {
+                              const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+                              setter?.call(textarea, prompt);
+                              textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                              textarea.focus();
+                            }
+                          });
+                        }}
+                        className="rounded-2xl border border-hairline bg-panel-raised/55 px-3.5 py-3 text-left text-xs leading-5 text-ink-muted transition hover:-translate-y-0.5 hover:border-signal-dim hover:bg-panel-raised hover:text-ink"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <h1 className="max-w-md text-xl font-semibold text-ink md:text-2xl">
-                  One assistant, many providers behind it.
-                </h1>
-                <p className="mt-2 max-w-sm text-sm text-ink-muted">
-                  Ask anything, or attach a PDF/DOCX to work on. If a provider is rate-limited
-                  or down, the gateway switches automatically — you'll never see it happen.
-                </p>
-              </div>
+              </section>
             )}
 
             {messages.map((m, i) => (
-              <MessageBubble key={i} message={m} />
+              <MessageBubble key={`${activeSessionId ?? 'new'}-${i}`} message={m} />
             ))}
 
             {sending && (
-              <div className="flex items-center gap-2 pl-1 font-mono text-xs text-ink-faint">
-                <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal" />
-                routing…
+              <div className="flex items-center gap-3 px-1 text-xs text-ink-faint" role="status" aria-live="polite">
+                <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+                  <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-signal/30" />
+                  <span className="relative h-1.5 w-1.5 rounded-full bg-signal" />
+                </span>
+                <span>Routing across configured providers…</span>
               </div>
             )}
 
             {error && (
-              <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-                {error}
+              <div className="flex items-start gap-3 rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger shadow-sm" role="alert">
+                <svg className="mt-0.5 shrink-0" width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 8v4m0 4h.01M10.3 4.3L2.9 17a2 2 0 001.7 3h14.8a2 2 0 001.7-3L13.7 4.3a2 2 0 00-3.4 0z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">Request failed</p>
+                  <p className="mt-0.5 break-words text-xs text-danger/80">{error}</p>
+                </div>
+                <button type="button" onClick={() => setError(null)} className="shrink-0 rounded-md px-1 text-danger/70 hover:text-danger" aria-label="Dismiss error">
+                  ×
+                </button>
               </div>
             )}
           </div>
         </div>
 
-        <div className="border-t border-hairline bg-canvas px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-6 md:py-4 lg:px-8">
-          <div className="mx-auto max-w-3xl">
+        <div className="border-t border-hairline/80 bg-canvas/95 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl md:px-6 md:py-4 lg:px-8">
+          <div ref={composerRef} className="mx-auto max-w-4xl">
             <Composer onSend={send} disabled={sending} projectId={activeProject?.projectId} />
+            <p className="mt-2 text-center font-mono text-[10px] text-ink-faint">
+              Enter to send · Shift+Enter for a new line · files and images supported
+            </p>
           </div>
         </div>
       </div>
