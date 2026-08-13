@@ -1,6 +1,8 @@
 import { v4 as uuid } from 'uuid';
 import { db } from '../database/client';
 import { AnalyticsRecord, ProviderName, TaskType } from '../types';
+import { env } from '../config/env';
+import { CACHE_KEYS, deleteRedisCache, getRedisCache, setRedisCache } from '../utils/redis-cache';
 
 interface AnalyticsRow {
   id: string;
@@ -47,6 +49,7 @@ let cachedAt = 0;
 export function invalidateAnalyticsCache(): void {
   cachedSummary = null;
   cachedAt = 0;
+  void deleteRedisCache(CACHE_KEYS.analyticsSummary);
 }
 
 export function recordAnalytics(input: {
@@ -84,6 +87,8 @@ export function recordAnalytics(input: {
     input.failoverFrom ?? null,
     new Date().toISOString()
   );
+
+  invalidateAnalyticsCache();
 }
 
 function get24hWindowStart(): string {
@@ -154,14 +159,29 @@ function computeAnalyticsSummary() {
   };
 }
 
-export function getAnalyticsSummary() {
+export async function getAnalyticsSummary(): Promise<AnalyticsSummary> {
   const now = Date.now();
   if (cachedSummary && now - cachedAt < ANALYTICS_CACHE_TTL_MS) {
     return cachedSummary;
   }
-  cachedSummary = computeAnalyticsSummary();
+
+  const redisSummary = await getRedisCache(CACHE_KEYS.analyticsSummary);
+  if (redisSummary) {
+    try {
+      const parsed = JSON.parse(redisSummary) as AnalyticsSummary;
+      cachedSummary = parsed;
+      cachedAt = now;
+      return parsed;
+    } catch {
+      // Ignore malformed shared-cache data and recompute from SQLite.
+    }
+  }
+
+  const summary = computeAnalyticsSummary();
+  cachedSummary = summary;
   cachedAt = now;
-  return cachedSummary;
+  await setRedisCache(CACHE_KEYS.analyticsSummary, JSON.stringify(summary), env.cacheTtlSeconds);
+  return summary;
 }
 
 export function getRecentAnalytics(limit = 50): AnalyticsRecord[] {
