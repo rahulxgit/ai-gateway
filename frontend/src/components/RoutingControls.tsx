@@ -52,26 +52,28 @@ export function RoutingControls({
       {forceProvider === 'openrouter' && (
         <div className="flex items-center gap-1.5">
           {!customMode ? (
-            <label className="sr-only" htmlFor="openrouter-model-select">OpenRouter model</label>
-            <select
-              id="openrouter-model-select"
-              value={isFreeModelPreset ? model : ''}
-              onChange={(e) => {
-                if (e.target.value === '__custom__') {
-                  setCustomMode(true);
-                  return;
-                }
-                onModelChange(e.target.value);
-              }}
-              className="rounded-lg border border-ok-dim/70 bg-ok/10 px-2.5 py-2 text-ok outline-none transition hover:border-ok focus:border-ok"
-              title="OpenRouter model override"
-            >
-              <option value="">model: default</option>
-              {OPENROUTER_FREE_MODELS.map((m) => (
-                <option key={m.value} value={m.value}>free: {m.label}</option>
-              ))}
-              <option value="__custom__">custom model id…</option>
-            </select>
+            <>
+              <label className="sr-only" htmlFor="openrouter-model-select">OpenRouter model</label>
+              <select
+                id="openrouter-model-select"
+                value={isFreeModelPreset ? model : ''}
+                onChange={(e) => {
+                  if (e.target.value === '__custom__') {
+                    setCustomMode(true);
+                    return;
+                  }
+                  onModelChange(e.target.value);
+                }}
+                className="rounded-lg border border-ok-dim/70 bg-ok/10 px-2.5 py-2 text-ok outline-none transition hover:border-ok focus:border-ok"
+                title="OpenRouter model override"
+              >
+                <option value="">model: default</option>
+                {OPENROUTER_FREE_MODELS.map((m) => (
+                  <option key={m.value} value={m.value}>free: {m.label}</option>
+                ))}
+                <option value="__custom__">custom model id…</option>
+              </select>
+            </>
           ) : (
             <input
               autoFocus
