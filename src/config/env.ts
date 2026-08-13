@@ -57,6 +57,7 @@ export const env = {
   requestTimeoutMs: optionalNumber('REQUEST_TIMEOUT_MS', 30_000),
   maxRetries: optionalNumber('MAX_RETRIES', 2),
   gatewayRequestBudgetMs: optionalNumber('GATEWAY_REQUEST_BUDGET_MS', 60_000),
+  dailyCostBudgetUsd: optionalNumber('DAILY_COST_BUDGET_USD', 0),
 
   corsOrigin: optional('CORS_ORIGIN', '*'),
   logLevel: optional('LOG_LEVEL', 'info'),
