@@ -1,17 +1,17 @@
 # Render Deployment Guide
 
-This page documents the environment variables and storage considerations for deploying AI Gateway on Render.
+This document describes the current environment, persistence, Redis, and hardening settings for the AI Gateway backend on Render.
 
-## Required environment variables
+## 1. Required configuration
 
-Set at least one provider API key. You do not need to configure every provider.
+Set **at least one provider API key**. You do not need to configure every provider.
 
 ```text
 GEMINI_API_KEY=<your-key>
 # or another supported provider key
 ```
 
-Recommended production runtime settings:
+Recommended production settings:
 
 ```text
 NODE_ENV=production
@@ -19,11 +19,11 @@ LOG_LEVEL=info
 CORS_ORIGIN=https://your-frontend.example.com
 ```
 
-Render provides a `PORT` value for web services. The application reads `PORT` when it is supplied and otherwise falls back to its local default.
+Render supplies `PORT` for the web service. The application uses it when present and falls back to its local default when it is not.
 
-## Request protection
+## 2. Request protection
 
-The gateway already has production hardening defaults, but these can be tuned in Render:
+The current defaults are:
 
 ```text
 GATEWAY_REQUEST_BUDGET_MS=60000
@@ -32,29 +32,60 @@ MAX_RETRIES=2
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=60
 MAX_PROMPT_LENGTH=3500000
-```
-
-`GATEWAY_REQUEST_BUDGET_MS` is the total wall-clock budget shared across the provider failover chain.
-
-## Optional 24-hour cost guard
-
-Disabled by default:
-
-```text
 DAILY_COST_BUDGET_USD=0
 ```
 
-Set it to a positive number to limit estimated spend in the rolling 24-hour window, for example:
+`GATEWAY_REQUEST_BUDGET_MS` is the total wall-clock budget shared by the provider failover chain. It is separate from the timeout applied to an individual provider request.
+
+`DAILY_COST_BUDGET_USD=0` disables the rolling 24-hour spend guard. Set a positive amount to reject new chat requests with HTTP `429` after the configured rolling 24-hour estimated spend has been reached.
+
+## 3. Rate limits and request-body limits
+
+The current HTTP protection is intentionally split:
 
 ```text
-DAILY_COST_BUDGET_USD=10
+GET /health
+GET /providers
+    → generous read limiter (300 requests per window)
+
+POST /chat
+POST /chat/stream
+    → stricter chat limiter (RATE_LIMIT_MAX per window)
+
+Other API routes
+    → normal API limiter (RATE_LIMIT_MAX per window)
 ```
 
-When the budget is exceeded, chat requests are rejected with HTTP `429`.
+JSON body parsing is also split:
 
-## Optional Redis L2 cache
+```text
+Normal JSON routes
+    → 2 MB
 
-Redis is disabled by default. To enable the shared cache:
+POST /chat
+POST /chat/stream
+    → 50 MB
+```
+
+The large chat parser exists to preserve existing vision/image payloads. The current chat schema uses `messages[].images[]` with base64 image attachments.
+
+The upload endpoint retains its own Multer file-size handling; the 2 MB JSON parser does not replace upload-specific limits.
+
+Requests that exceed the applicable JSON limit return HTTP `413`.
+
+## 4. Redis L2 cache (optional)
+
+Redis is disabled by default. The cache hierarchy is:
+
+```text
+L1 in-process cache
+       ↓ miss
+L2 Redis
+       ↓ miss / Redis unavailable
+normal SQLite/provider operation
+```
+
+Enable it with:
 
 ```text
 CACHE_ENABLED=true
@@ -62,70 +93,132 @@ CACHE_TTL_SECONDS=300
 REDIS_URL=<your-Redis-compatible-connection-url>
 ```
 
-Cache flow:
+Default values:
 
 ```text
-L1 in-process cache
-      ↓ miss
-L2 Redis
-      ↓ miss / Redis unavailable
-SQLite or provider API
+CACHE_ENABLED=false
+CACHE_TTL_SECONDS=300
+REDIS_URL=
 ```
 
-Redis is best-effort. A Redis outage does not make analytics or model validation fail.
+Redis is best-effort. If Redis is unavailable, analytics/model-validation operations continue through their existing fallback paths instead of making the API unavailable.
 
-On Render, a managed Key Value service can provide a Redis-compatible shared cache.
+When graceful shutdown is triggered, the optional Redis client is closed as part of the shutdown sequence.
 
-## SQLite persistence
+## 5. SQLite persistence
 
-The default database configuration is:
+The application defaults to:
 
 ```text
 DATABASE_URL=./data/gateway.db
 ```
 
-Render's service filesystem is ephemeral by default. If you want SQLite data to survive restarts and deploys, attach a Render persistent disk and place the database under that disk's mount path, for example:
+The Docker image creates `/app/data` and runs the application as the non-root `gateway` user with ownership of that directory.
+
+### Recommended Render persistent-disk setup
+
+If you want SQLite to survive instance replacement/redeploys:
+
+1. Add a Render persistent disk to the backend service.
+2. Mount the disk at:
 
 ```text
-DATABASE_URL=/var/data/gateway.db
+/app/data
 ```
 
-Mount the persistent disk at `/var/data`.
+3. Set:
 
-A persistent disk is tied to a single service instance, so it is not appropriate for horizontally scaling the SQLite-backed application. For multi-instance production, move persistent application data to a managed database.
+```text
+DATABASE_URL=/app/data/gateway.db
+```
 
-## Recommended Render checklist
+Do **not** use `/var/data` with the current image unless you explicitly create that directory and make it writable by the `gateway` user. The service failed to start previously when `/var/data` was configured because the non-root process could not create that directory.
+
+A Render persistent disk is tied to one service instance. This SQLite architecture therefore should not be horizontally scaled by simply adding multiple service instances. For multi-instance production, move persistent application data to a managed database.
+
+## 6. Logging
+
+Production logging is stdout-oriented. The application does not depend on a persistent filesystem log directory for normal production logging.
+
+This is intentional for Render deployments and makes logs available through the platform log stream.
+
+## 7. Graceful shutdown
+
+The backend handles `SIGTERM` and `SIGINT` by:
+
+```text
+signal
+  ↓
+stop accepting new HTTP connections
+  ↓
+drain active requests
+  ↓
+close Redis when enabled
+  ↓
+close SQLite
+```
+
+A bounded fallback prevents a stuck connection from keeping the service alive indefinitely.
+
+## 8. Correlation IDs
+
+Every incoming HTTP request receives a UUID in:
+
+```text
+X-Request-ID: <uuid>
+```
+
+The correlation ID is also passed into relevant router, orchestrator, health, and error logs for request tracing.
+
+## 9. Recommended Render environment
+
+Use the following as a starting point and replace secrets/URLs with your real values:
 
 ```text
 NODE_ENV=production
-<at least one provider API key>=<secret>
+PORT=<Render-provided or omitted>
+
+# At least one provider key
+GEMINI_API_KEY=<secret>
+
+# Frontend
 CORS_ORIGIN=https://your-frontend.example.com
 LOG_LEVEL=info
+
+# Request protection
 GATEWAY_REQUEST_BUDGET_MS=60000
 REQUEST_TIMEOUT_MS=30000
 MAX_RETRIES=2
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=60
+MAX_PROMPT_LENGTH=3500000
 DAILY_COST_BUDGET_USD=0
 
-# Redis (optional)
+# Optional Redis
 CACHE_ENABLED=false
 CACHE_TTL_SECONDS=300
 REDIS_URL=
 
-# SQLite
+# SQLite — use the mounted persistent-disk path when a disk is attached
+DATABASE_URL=/app/data/gateway.db
+```
+
+If you are not using a Render persistent disk yet, the code default is:
+
+```text
 DATABASE_URL=./data/gateway.db
 ```
 
-If you enable Redis:
+but SQLite data can be lost when Render replaces the service filesystem.
 
-```text
-CACHE_ENABLED=true
-REDIS_URL=<your-Redis-compatible-connection-url>
-```
+## 10. Deployment checklist
 
-If you attach a persistent disk for SQLite:
+Before deploying:
 
-```text
-DATABASE_URL=/var/data/gateway.db
-```
+- At least one provider API key is present.
+- `CORS_ORIGIN` points to the real frontend origin(s).
+- `CACHE_ENABLED` is `true` only when a working `REDIS_URL` is available.
+- `DATABASE_URL` points into the mounted persistent disk when SQLite persistence is required.
+- The persistent disk mount path is `/app/data` for the current Docker image.
+- Run `GET /health` after deployment and inspect startup logs if a provider is unavailable.
+- Run `GET /health/models` to validate configured provider model availability.
