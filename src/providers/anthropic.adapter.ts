@@ -1,6 +1,7 @@
 import axios from 'axios';
 import {
   ChatMessage,
+  ModelAvailabilityResult,
   ProviderAdapter,
   ProviderAdapterOptions,
   ProviderResponse,
@@ -11,6 +12,7 @@ import { PRICING_PER_1K_TOKENS } from '../config/routing';
 import { classifyError, createSseFrameParser, estimateCost } from './base.adapter';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
+const MODELS_API_URL = 'https://api.anthropic.com/v1/models';
 
 function splitSystem(messages: ChatMessage[]): { system?: string; rest: ChatMessage[] } {
   const systemMsgs = messages.filter((m) => m.role === 'system').map((m) => m.content);
@@ -162,6 +164,39 @@ export class AnthropicAdapter implements ProviderAdapter {
       };
     } catch (err) {
       throw classifyError(this.name, err);
+    }
+  }
+
+  async checkModelAvailability(): Promise<ModelAvailabilityResult> {
+    if (!this.isConfigured()) {
+      return { status: 'undetermined', model: this.defaultModel, detail: 'not configured' };
+    }
+
+    try {
+      const { data } = await axios.get(MODELS_API_URL, {
+        headers: this.headers(),
+        timeout: env.requestTimeoutMs,
+      });
+      const models: unknown = data?.data;
+      if (!Array.isArray(models)) {
+        return { status: 'undetermined', model: this.defaultModel, detail: 'unexpected models-list response shape' };
+      }
+
+      const modelIds = models
+        .map((model: unknown) => (model as { id?: string })?.id)
+        .filter((id): id is string => typeof id === 'string');
+
+      const found = modelIds.includes(this.defaultModel);
+      return {
+        status: found ? 'available' : 'unavailable',
+        model: this.defaultModel,
+        detail: found ? undefined : `not present in ${modelIds.length} models returned by Anthropic`,
+      };
+    } catch (err) {
+      const detail = axios.isAxiosError(err)
+        ? `${err.response?.status ?? 'network error'}: ${err.message}`
+        : String(err);
+      return { status: 'undetermined', model: this.defaultModel, detail };
     }
   }
 }
