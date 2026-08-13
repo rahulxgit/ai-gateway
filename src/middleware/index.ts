@@ -7,7 +7,7 @@ import { PROVIDER_NAMES } from '../types';
 import { GatewayRequestBudgetExceededError } from '../services/router.service';
 import { DailyCostBudgetExceededError } from '../services/orchestrator.service';
 
-const requestPath = (req: Request): string => `${req.baseUrl}${req.path}`;
+const requestPath = (req: Request): string => `${req.baseUrl}${req.path}`.replace(/\/$/, '') || '/';
 
 const isChatRequest = (req: Request): boolean =>
   req.method === 'POST' && (requestPath(req) === '/chat' || requestPath(req) === '/chat/stream');
