@@ -52,6 +52,8 @@ export const env = {
 
   rateLimitWindowMs: optionalNumber('RATE_LIMIT_WINDOW_MS', 60_000),
   rateLimitMax: optionalNumber('RATE_LIMIT_MAX', 60),
+  readRateLimitMax: optionalNumber('READ_RATE_LIMIT_MAX', 300),
+  chatRateLimitMax: optionalNumber('CHAT_RATE_LIMIT_MAX', optionalNumber('RATE_LIMIT_MAX', 60)),
 
   maxPromptLength: optionalNumber('MAX_PROMPT_LENGTH', 3_500_000),
   requestTimeoutMs: optionalNumber('REQUEST_TIMEOUT_MS', 30_000),
