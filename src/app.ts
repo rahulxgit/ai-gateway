@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
-import { apiChatRateLimiter, apiRateLimiter, apiReadRateLimiter, errorHandler, notFoundHandler, sanitizeInput } from './middleware';
+import { apiChatRateLimiter, apiRateLimiter, apiReadRateLimiter, errorHandler, notFoundHandler, requestCorrelationId, sanitizeInput } from './middleware';
 import chatRoutes from './routes/chat.routes';
 import sessionRoutes from './routes/session.routes';
 import analyticsRoutes from './routes/analytics.routes';
@@ -12,6 +12,7 @@ import uploadRoutes from './routes/upload.routes';
 export function createApp() {
   const app = express();
 
+  app.use(requestCorrelationId);
   app.use(helmet());
   // CORS_ORIGIN accepts a comma-separated list, e.g.
   // "https://a.vercel.app,https://b.vercel.app" — so this gateway can serve
