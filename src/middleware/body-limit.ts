@@ -15,7 +15,7 @@ function isChatPath(req: Parameters<RequestHandler>[0]): boolean {
  */
 export const smallJsonBodyParser = json({
   limit: DEFAULT_BODY_LIMIT,
-  type: (req) => !isChatPath(req),
+  type: (req) => !isChatPath(req) && Boolean(req.is('json')),
 });
 
 /** Parser used only by POST /chat and POST /chat/stream. */
