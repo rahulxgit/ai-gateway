@@ -33,12 +33,6 @@ describe('classifyError', () => {
     expect(classifyError('anthropic', fakeAxiosError(403)).code).toBe('AUTH_ERROR');
   });
 
-  // Regression test: captured live from api.novita.ai on a real,
-  // out-of-funds account. Novita returns this as a 403, indistinguishable
-  // from a bad API key by status code alone — the router's /health panel
-  // previously showed "authentication failed" for what was actually a
-  // billing problem, sending anyone debugging it toward rotating a key
-  // that was never broken in the first place.
   it('classifies a 403 with balance language as INSUFFICIENT_CREDITS, not AUTH_ERROR', () => {
     const err = classifyError(
       'novita',
@@ -49,7 +43,7 @@ describe('classifyError', () => {
       })
     );
     expect(err.code).toBe('INSUFFICIENT_CREDITS');
-    expect(err.retryable).toBe(true);
+    expect(err.retryable).toBe(false);
     expect(err.message).toContain('balance');
   });
 
@@ -59,26 +53,23 @@ describe('classifyError', () => {
       fakeAxiosError(403, undefined, { code: 403, reason: 'INVALID_API_KEY', message: 'invalid API key' })
     );
     expect(err.code).toBe('AUTH_ERROR');
+    expect(err.retryable).toBe(false);
   });
 
-  // Regression test: captured live from api.inference.net on a real
-  // account with no payment method on file. Previously 402 had no
-  // dedicated case and fell into the generic UNKNOWN bucket with just the
-  // raw axios "Request failed with status code 402" message, giving no
-  // indication this was a billing issue rather than an unexplained error.
   it('classifies 402 as INSUFFICIENT_CREDITS and surfaces the provider message', () => {
     const err = classifyError(
       'inference',
       fakeAxiosError(402, undefined, { message: 'Insufficient funds. Please add a payment method.' })
     );
     expect(err.code).toBe('INSUFFICIENT_CREDITS');
-    expect(err.retryable).toBe(true);
+    expect(err.retryable).toBe(false);
     expect(err.message).toContain('payment required');
   });
 
   it('classifies 402 with no body using a sensible default message', () => {
     const err = classifyError('inference', fakeAxiosError(402));
     expect(err.code).toBe('INSUFFICIENT_CREDITS');
+    expect(err.retryable).toBe(false);
     expect(err.message).toContain('payment required');
   });
 
@@ -94,11 +85,7 @@ describe('classifyError', () => {
     expect(err.retryable).toBe(false);
   });
 
-  // Regression test: captured live from api.anthropic.com on a real,
-  // out-of-credit account. Anthropic returns this as a plain HTTP 400
-  // invalid_request_error, not a 402/403, so it was previously
-  // indistinguishable from a malformed request payload.
-  it('classifies a 400 with credit-balance language as INSUFFICIENT_CREDITS (retryable)', () => {
+  it('classifies a 400 with credit-balance language as INSUFFICIENT_CREDITS (non-retryable)', () => {
     const err = classifyError(
       'anthropic',
       fakeAxiosError(400, undefined, {
@@ -110,7 +97,7 @@ describe('classifyError', () => {
       })
     );
     expect(err.code).toBe('INSUFFICIENT_CREDITS');
-    expect(err.retryable).toBe(true);
+    expect(err.retryable).toBe(false);
     expect(err.message).toContain('credit balance');
   });
 
@@ -122,18 +109,12 @@ describe('classifyError', () => {
     expect(err.code).toBe('INVALID_REQUEST');
   });
 
-  it('classifies 404 as NOT_FOUND and retryable (fails over to next provider)', () => {
+  it('classifies 404 as NOT_FOUND and non-retryable (fails over to next provider)', () => {
     const err = classifyError('fireworks', fakeAxiosError(404));
     expect(err.code).toBe('NOT_FOUND');
-    expect(err.retryable).toBe(true);
+    expect(err.retryable).toBe(false);
   });
 
-  // Regression test: Fireworks returns HTTP 412 for a suspended account
-  // (spending limit reached / no payment method / unpaid invoice), not a
-  // 401/402/403. Before this, that fell through to the generic UNKNOWN
-  // bucket, which made a billing problem look like an unexplained failure
-  // in logs and health status instead of a clear "check your account"
-  // signal.
   it('classifies 412 as ACCOUNT_SUSPENDED and surfaces the provider message', () => {
     const err = classifyError(
       'fireworks',
@@ -142,13 +123,14 @@ describe('classifyError', () => {
       })
     );
     expect(err.code).toBe('ACCOUNT_SUSPENDED');
-    expect(err.retryable).toBe(true);
+    expect(err.retryable).toBe(false);
     expect(err.message).toContain('suspended');
   });
 
   it('classifies 412 with no body using a sensible default message', () => {
     const err = classifyError('fireworks', fakeAxiosError(412));
     expect(err.code).toBe('ACCOUNT_SUSPENDED');
+    expect(err.retryable).toBe(false);
     expect(err.message.toLowerCase()).toContain('suspended');
   });
 

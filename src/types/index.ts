@@ -125,7 +125,13 @@ export class ProviderError extends Error {
     // AUTH_ERROR / INVALID_REQUEST are the caller's fault and won't be fixed
     // by switching providers, but the gateway still fails over to be safe
     // for AUTH/UNAVAILABLE-class issues except invalid request payloads.
-    this.retryable = code !== 'INVALID_REQUEST';
+    this.retryable = ![
+      'AUTH_ERROR',
+      'NOT_FOUND',
+      'ACCOUNT_SUSPENDED',
+      'INSUFFICIENT_CREDITS',
+      'INVALID_REQUEST',
+    ].includes(code);
   }
 }
 
