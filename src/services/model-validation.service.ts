@@ -1,6 +1,8 @@
 import { ModelAvailabilityResult, ProviderName } from '../types';
 import { providerRegistry, listConfiguredProviders } from '../providers/registry';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
+import { CACHE_KEYS, deleteRedisCache, getRedisCache, setRedisCache } from '../utils/redis-cache';
 
 // Providers keep deprecating/renaming default models out from under us —
 // this bit the gateway in production when Groq pulled
@@ -27,12 +29,25 @@ let cachedAt = 0;
 export function invalidateModelValidationCache(): void {
   cachedResults = null;
   cachedAt = 0;
+  void deleteRedisCache(CACHE_KEYS.modelValidation);
 }
 
 export async function validateConfiguredModels(): Promise<ModelValidationSummary[]> {
   const now = Date.now();
   if (cachedResults && now - cachedAt < MODEL_VALIDATION_CACHE_TTL_MS) {
     return cachedResults;
+  }
+
+  const redisResults = await getRedisCache(CACHE_KEYS.modelValidation);
+  if (redisResults) {
+    try {
+      const parsed = JSON.parse(redisResults) as ModelValidationSummary[];
+      cachedResults = parsed;
+      cachedAt = now;
+      return parsed;
+    } catch {
+      // Ignore malformed shared-cache data and revalidate providers.
+    }
   }
 
   const configured = listConfiguredProviders();
@@ -64,5 +79,6 @@ export async function validateConfiguredModels(): Promise<ModelValidationSummary
 
   cachedResults = results;
   cachedAt = now;
+  await setRedisCache(CACHE_KEYS.modelValidation, JSON.stringify(results), env.cacheTtlSeconds);
   return results;
 }
