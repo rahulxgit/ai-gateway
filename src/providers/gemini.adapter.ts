@@ -1,6 +1,7 @@
 import axios from 'axios';
 import {
   ChatMessage,
+  ModelAvailabilityResult,
   ProviderAdapter,
   ProviderAdapterOptions,
   ProviderResponse,
@@ -157,6 +158,39 @@ export class GeminiAdapter implements ProviderAdapter {
       };
     } catch (err) {
       throw classifyError(this.name, err);
+    }
+  }
+
+  async checkModelAvailability(): Promise<ModelAvailabilityResult> {
+    if (!this.isConfigured()) {
+      return { status: 'undetermined', model: this.defaultModel, detail: 'not configured' };
+    }
+
+    try {
+      const { data } = await axios.get(`${BASE_URL}?key=${env.geminiApiKey}`, {
+        timeout: env.requestTimeoutMs,
+      });
+      const models: unknown = data?.models;
+      if (!Array.isArray(models)) {
+        return { status: 'undetermined', model: this.defaultModel, detail: 'unexpected models-list response shape' };
+      }
+
+      const modelNames = models
+        .map((model: unknown) => (model as { name?: string })?.name)
+        .filter((name): name is string => typeof name === 'string')
+        .map((name) => name.replace(/^models\//, ''));
+
+      const found = modelNames.includes(this.defaultModel);
+      return {
+        status: found ? 'available' : 'unavailable',
+        model: this.defaultModel,
+        detail: found ? undefined : `not present in ${modelNames.length} models returned by Gemini`,
+      };
+    } catch (err) {
+      const detail = axios.isAxiosError(err)
+        ? `${err.response?.status ?? 'network error'}: ${err.message}`
+        : String(err);
+      return { status: 'undetermined', model: this.defaultModel, detail };
     }
   }
 }
