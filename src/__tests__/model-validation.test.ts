@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { env } from '../config/env';
 import { AnthropicAdapter } from '../providers/anthropic.adapter';
 import { GeminiAdapter } from '../providers/gemini.adapter';
 import { OpenAICompatibleAdapter } from '../providers/openai-compatible.adapter';
@@ -67,7 +68,16 @@ describe('OpenAICompatibleAdapter.checkModelAvailability', () => {
 });
 
 describe('GeminiAdapter.checkModelAvailability', () => {
-  beforeEach(() => jest.clearAllMocks());
+  const originalApiKey = env.geminiApiKey;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    env.geminiApiKey = 'test-gemini-key';
+  });
+
+  afterAll(() => {
+    env.geminiApiKey = originalApiKey;
+  });
 
   it('reports "available" when the defaultModel is present in Gemini model names', async () => {
     mockedAxios.get.mockResolvedValue({
@@ -109,7 +119,16 @@ describe('GeminiAdapter.checkModelAvailability', () => {
 });
 
 describe('AnthropicAdapter.checkModelAvailability', () => {
-  beforeEach(() => jest.clearAllMocks());
+  const originalApiKey = env.anthropicApiKey;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    env.anthropicApiKey = 'test-anthropic-key';
+  });
+
+  afterAll(() => {
+    env.anthropicApiKey = originalApiKey;
+  });
 
   it('reports "available" when the defaultModel is present in Anthropic models', async () => {
     mockedAxios.get.mockResolvedValue({
