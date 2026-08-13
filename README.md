@@ -1,53 +1,38 @@
 # AI Gateway — Multi-LLM Router with Automatic Failover
 
-A production-ready gateway that routes chat requests across seven LLM providers
-(Gemini, Anthropic, OpenAI, Groq, Together AI, OpenRouter, Hugging Face),
-automatically failing over between them on rate limits, quota errors,
-timeouts, or outages — **without losing conversation or project context**.
+A production-ready gateway that routes chat requests across multiple LLM providers, automatically failing over on rate limits, quota errors, timeouts, or outages — without losing conversation or project context.
 
 ## Why this exists
 
-Single-provider apps break when that provider rate-limits, goes down, or
-runs out of quota. This gateway sits in front of every provider behind one
-API, so your app keeps working even when any individual provider doesn't.
+Single-provider apps break when a provider rate-limits, goes down, or runs out of quota. This gateway sits in front of configured providers behind one API, so applications can keep working even when an individual provider is unavailable.
 
 ## Architecture
 
-```
+```text
 Client
   │
   ▼
-Express API  ──▶  AI Orchestrator  ──▶  Router (failover engine)
-                        │                     │
-                        │                     ▼
-                        │              Provider Adapters
-                        │        (Gemini / Anthropic / OpenAI /
-                        │         Groq / Together / OpenRouter / HF)
-                        ▼
-              Persistent Project Context
-        (SQLite: sessions, messages, projects,
-         files, edit history, snapshots, analytics)
+Express API ──▶ AI Orchestrator ──▶ Router (failover engine)
+                      │                    │
+                      │                    ▼
+                      │             Provider Adapters
+                      │        (Gemini / Anthropic / OpenAI /
+                      │         Groq / Together / OpenRouter / ...)
+                      ▼
+             Persistent Project Context
+       (SQLite: sessions, messages, projects,
+        files, edit history, snapshots, analytics)
 ```
 
-- **Provider adapters** (`src/providers/`) all implement one `ProviderAdapter`
-  interface. OpenAI, Groq, Together, and OpenRouter share a single
-  `OpenAICompatibleAdapter` base since they speak the same API shape;
-  Anthropic and Gemini have their own adapters for their native formats.
-- **Router** (`src/services/router.service.ts`) tries providers in a
-  task-aware priority order, retries transient errors with exponential
-  backoff, and fails over to the next provider on any retryable error.
-- **Orchestrator** (`src/services/orchestrator.service.ts`) wraps the router
-  and guarantees continuity: before every call it reloads project memory,
-  conversation history, and relevant files from SQLite and injects them as
-  context — so a failover to a different provider is invisible to the user.
-- **Persistent Project Context**: every file write, architecture decision,
-  task, bug, and conversation turn is stored in SQLite with full version
-  history, undo/revert, and named snapshots.
+- **Provider adapters** (`src/providers/`) implement the shared `ProviderAdapter` interface.
+- **Router** (`src/services/router.service.ts`) applies task-aware provider ordering, retries transient failures, and fails over to another provider when appropriate.
+- **Orchestrator** (`src/services/orchestrator.service.ts`) restores conversation history, project memory, and relevant workspace context before routing a request.
+- **Persistent project context** stores sessions, messages, projects, files, edit history, snapshots, and analytics in SQLite.
 
 ## Quick start
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/rahulxgit/ai-gateway.git
 cd ai-gateway
 npm install
 cp .env.example .env
@@ -56,143 +41,50 @@ npm run migrate
 npm run dev
 ```
 
-The server starts on `http://localhost:4000`. Check `GET /health` to
-confirm it's up.
+The backend starts on `http://localhost:4000`. Use `GET /health` to confirm it is running.
 
 ### Docker
 
 ```bash
-cp .env.example .env   # add your keys
+cp .env.example .env
+# add your provider keys
 docker compose up --build
 ```
 
-This runs the gateway plus a Redis instance (for optional response caching).
+This starts the gateway together with Redis for optional response caching.
 
 ## Configuration
 
-All config is via environment variables — see `.env.example`. You only need
-**one** provider key to run; the gateway adapts to whatever's configured and
-reports the rest as unavailable via `/health` and `/providers`.
+Configuration is provided through environment variables; see `.env.example` for the full list. At least one provider key is enough to run the gateway. Unconfigured providers are reported as unavailable and skipped by routing.
 
-### Providers
+### Provider support
 
-Twenty-one providers are supported, all behind the same `ProviderAdapter`
-interface: Gemini, Anthropic, OpenAI, Groq, Together AI, OpenRouter,
-Hugging Face, DeepSeek, Kimi (Moonshot AI), Cerebras, Mistral, Cloudflare
-Workers AI, Fireworks AI, Inference.net, Nebius AI Studio, SambaNova Cloud,
-NVIDIA NIM, Novita AI, Baseten, ModelScope, and AI/ML API. A few notes on
-cost, since "free" means different things across them:
+The gateway currently contains adapters for Gemini, Anthropic, OpenAI, Groq, Together AI, OpenRouter, Hugging Face, DeepSeek, Kimi (Moonshot AI), Cerebras, Mistral, Cloudflare Workers AI, Fireworks AI, Inference.net, Nebius AI Studio, SambaNova Cloud, NVIDIA NIM, Novita AI, Baseten, ModelScope, and AI/ML API.
 
-- **Gemini, Groq, Together, Hugging Face, OpenRouter, Cerebras, Mistral** —
-  genuinely free tiers with no card required (limits and reliability vary;
-  Cerebras's 1M tokens/day resets daily and is currently the most generous
-  raw daily volume of any provider here; Mistral's ~1B tokens/month
-  "Experiment" tier includes Codestral for coding).
-- **DeepSeek** — 5 million free tokens on signup, no card required, then
-  roughly $0.14 per million tokens after. One of the strongest
-  price-to-coding-quality ratios available.
-- **Kimi (Moonshot)** — requires a minimum $1 recharge to activate the API
-  (not free-to-start), then cheap per-token after. Notable for a very large
-  context window, so it leads the `large-context` task routing.
-- **Zero-cost alternative to DeepSeek/Kimi**: OpenRouter (free to create a
-  key for) hosts `:free`-suffixed variants of both, e.g.
-  `deepseek/deepseek-chat-v3.1:free` or `moonshotai/kimi-k2:free`. Pass
-  `forceProvider: "openrouter"` with `model: "deepseek/deepseek-chat-v3.1:free"`
-  in a `/chat` request to use them at no cost.
+Provider availability, model identifiers, rate limits, and free-tier terms can change over time. Treat the adapter defaults and the project's verification notes as the source of truth for the current implementation rather than assuming every provider offers a permanent free tier.
 
-### Newly added free / free-tier providers
+### Routing
 
-All ten of these are OpenAI-compatible under the hood, so they reuse the
-same `OpenAICompatibleAdapter` base class as Groq/Together/OpenRouter —
-each adapter file (`src/providers/<name>.adapter.ts`) is just a base URL,
-API key, and default model.
+Task-based routing (`taskType: "coding"`, `"reasoning"`, etc.) selects a preferred provider order. Health information can influence that ordering, and retryable failures trigger automatic failover.
 
-| Provider | Env var(s) | Default model used here | Sign up |
-|---|---|---|---|
-| Cloudflare Workers AI | `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` (both required) | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | dash.cloudflare.com |
-| Fireworks AI | `FIREWORKS_API_KEY` | `accounts/fireworks/models/gpt-oss-120b` | fireworks.ai |
-| Inference.net | `INFERENCE_API_KEY` | `meta-llama/llama-3.3-70b-instruct/fp-8` | inference.net |
-| Nebius AI Studio | `NEBIUS_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct` | studio.nebius.com |
-| SambaNova Cloud | `SAMBANOVA_API_KEY` | `Meta-Llama-3.3-70B-Instruct` | cloud.sambanova.ai |
-| NVIDIA NIM | `NVIDIA_API_KEY` | `meta/llama-3.3-70b-instruct` | build.nvidia.com |
-| Novita AI | `NOVITA_API_KEY` | `meta-llama/llama-3.3-70b-instruct` | novita.ai |
-| Baseten | `BASETEN_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct` | baseten.co |
-| ModelScope | `MODELSCOPE_API_KEY` | `Qwen/Qwen2.5-72B-Instruct` | modelscope.cn |
-| AI/ML API | `AIMLAPI_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct-Turbo` | aimlapi.com |
+Provider-specific adapters clamp requested `maxTokens` to their configured ceiling. When a request omits `maxTokens`, the backend uses its conservative default rather than automatically requesting each provider's entire output ceiling.
 
-They're wired into the gateway exactly like every other provider: appended
-to `providerRegistry` in `src/providers/registry.ts` and to the end of
-`DEFAULT_FAILOVER_ORDER` in `src/config/routing.ts` — so nothing about
-existing routing, task preferences, or the failover order for the original
-eleven providers changes. To use one, set its env var(s) and either let it
-be picked up in the default chain or force it directly:
+## Using the gateway as an API
 
-```json
-{
-  "messages": [{ "role": "user", "content": "Hello from a new provider!" }],
-  "forceProvider": "fireworks"
-}
+Point your application at the gateway's API base URL and use the same JSON request structure for chat calls.
+
+For local development:
+
+```text
+http://localhost:4000
 ```
 
-Cloudflare is the one exception worth calling out: it needs **both**
-`CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` set, since the endpoint URL
-itself is scoped to your Cloudflare account
-(`/client/v4/accounts/{account_id}/ai/v1`). If either is missing, the
-adapter reports itself as unconfigured and the router skips it cleanly,
-same as any provider with a missing key.
+For the project's currently deployed backend, see `PROJECT_OVERVIEW.md` and your deployment configuration rather than copying a production endpoint into application code without verifying that it is still active.
 
-Model IDs above are the free-tier defaults used out of the box; override
-per-request with the `model` field, or edit `defaultModel` in the relevant
-adapter file to change the default permanently.
+### cURL
 
-### Max output tokens per provider
-
-Every adapter clamps a request's `maxTokens` to its own real ceiling before
-sending it, so asking for more than a provider allows fails over cleanly
-instead of hard-erroring. Verified ceilings (checked against each
-provider's own docs):
-
-| Provider | Max output tokens | Verified? |
-|---|---|---|
-| OpenAI (gpt-5-nano) | 128,000 | ✅ verified — OpenAI docs |
-| Gemini (2.5 Flash-Lite) | 65,536 | ✅ verified — Google docs |
-| Anthropic (Haiku 4.5) | 64,000 | ✅ verified — Anthropic docs |
-| Together (Llama-3.3-70B-Instruct-Turbo) | 64,000 | ⚠️ no separate cap published; context-bound estimate (131K context, one listing shows "unlimited" output) |
-| Mistral (Small 4) | 64,000 | ⚠️ no separate cap published; context-bound estimate (256K shared input+output budget) |
-| Cerebras (gpt-oss-120b) | 40,960 | ✅ verified — Cerebras model config |
-| Groq (llama-3.3-70b-versatile) | 32,768 | ✅ verified — Groq docs |
-| OpenRouter (llama-3.3-70b-instruct) | 16,384 | ✅ verified — OpenRouter model page |
-| DeepSeek (deepseek-v4-flash) | 384,000 | ✅ verified — DeepSeek docs |
-| Hugging Face | 8,192 | ⚠️ genuinely unverifiable — HF's router dynamically proxies to a different backend per request, so there's no single fixed ceiling to check |
-| Kimi (k2.6) | 8,192 | ⚠️ conservative estimate, not individually verified |
-
-If you confirm a higher real ceiling for any of the unverified ones, update
-`maxOutputTokens` in that adapter's constructor (`src/providers/*.adapter.ts`).
-
-**Migration complete:** DeepSeek's old `deepseek-chat` model ID reached its
-deprecation deadline on **2026-07-24** and has been fully replaced with
-`deepseek-v4-flash` in `src/providers/deepseek.adapter.ts` (also a real
-upgrade: max output rose from 8,000 to 384,000 tokens). No action needed
-unless DeepSeek announces a further migration.
-
-Task-based routing (`taskType: "coding"`, `"reasoning"`, etc.) automatically
-prefers whichever provider tends to perform best for that kind of work —
-see `src/config/routing.ts` to adjust the priority order.
-
-
-## How to use this AI Gateway like an API in your own projects
-
-You can use this gateway exactly the same way you use official APIs from OpenAI or Anthropic in your code. By pointing your API base URL to this gateway, you get automatic failover and routing without changing your core application logic.
-
-- **Base URL**: `https://ai-gateway-wx35.onrender.com`
-- **Auth**: There is currently no authentication required. The endpoint is completely open.
-- **Warning**: This is perfectly fine for personal scripts, local development, or quick experiments. However, it is **unsafe for public production use** unless you add an API key authentication layer, as anyone could consume your configured provider quotas.
-
-### Practical Code Examples
-
-#### cURL
 ```bash
-curl -X POST https://ai-gateway-wx35.onrender.com/chat \
+curl -X POST http://localhost:4000/chat \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -205,293 +97,128 @@ curl -X POST https://ai-gateway-wx35.onrender.com/chat \
   }'
 ```
 
-#### Python (using `requests`)
-This pattern is similar to how the existing `job_search.py` script utilizes the gateway for robust multi-step reasoning.
+### Python
+
 ```python
 import requests
 
-API_BASE = "https://ai-gateway-wx35.onrender.com"
+API_BASE = "http://localhost:4000"
 
-def generate_text(prompt):
-    payload = {
-        "messages": [{"role": "user", "content": prompt}],
-        "taskType": "coding" # Optional: hints the router to pick the best model for the task
-    }
+payload = {
+    "messages": [{"role": "user", "content": "Explain async/await in JavaScript."}],
+    "taskType": "coding",
+}
 
-    response = requests.post(f"{API_BASE}/chat", json=payload)
-    response.raise_for_status()
+response = requests.post(f"{API_BASE}/chat", json=payload, timeout=60)
+response.raise_for_status()
 
-    data = response.json()
-    return data['message']['content']
-
-# Example usage
-print(generate_text("Explain the difference between threading and multiprocessing in Python."))
+print(response.json()["message"]["content"])
 ```
 
-#### Node.js (using `fetch`)
+### Node.js
+
 ```javascript
-const API_BASE = "https://ai-gateway-wx35.onrender.com";
+const API_BASE = "http://localhost:4000";
 
 async function chatWithGateway(userMessage) {
   const response = await fetch(`${API_BASE}/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      messages: [{ role: 'user', content: userMessage }],
-      taskType: 'reasoning'
-    })
+      messages: [{ role: "user", content: userMessage }],
+      taskType: "reasoning",
+    }),
   });
 
   if (!response.ok) {
-    throw new Error(`Gateway error: ${response.statusText}`);
+    throw new Error(`Gateway error: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();
-  console.log("Response:", data.message.content);
-  console.log("Providers tried:", data.metadata.chain); // See the failover chain!
+  console.log(data.message.content);
+  console.log(data.metadata?.chain);
 }
 
 chatWithGateway("What are the architectural benefits of the actor model?");
 ```
 
-### Feature Examples
+## Request examples
 
-#### Basic Chat Request
-```json
-{
-  "messages": [{ "role": "user", "content": "Hello, world!" }]
-}
-```
+### Basic chat
 
-#### Forcing a Provider
-Bypass automatic routing and strictly use a specific provider.
-```json
-{
-  "messages": [{ "role": "user", "content": "I specifically want Claude's opinion." }],
-  "forceProvider": "anthropic"
-}
-```
-
-#### Selecting a Free OpenRouter Model Explicitly
-Leverage zero-cost models available via OpenRouter.
-```json
-{
-  "messages": [{ "role": "user", "content": "Help me refactor this code..." }],
-  "forceProvider": "openrouter",
-  "model": "deepseek/deepseek-chat-v3.1:free"
-}
-```
-
-#### Multi-turn Conversation
-Pass a `sessionId` to append to an existing conversation stored in the gateway's SQLite database.
-```json
-{
-  "sessionId": "a1b2c3d4-e5f6-7890",
-  "messages": [{ "role": "user", "content": "Can you explain that last point in more detail?" }]
-}
-```
-
-#### Attaching an Image (Vision Request)
 ```json
 {
   "messages": [
-    {
-      "role": "user",
-      "content": "What is in this image?",
-      "image": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD..."
-    }
+    { "role": "user", "content": "Hello, world!" }
   ]
 }
 ```
 
-#### Response Controls
-Adjust generation parameters.
+### Force a provider
+
 ```json
 {
-  "messages": [{ "role": "user", "content": "Write 5 unusual names for a pet cat." }],
+  "messages": [
+    { "role": "user", "content": "Give me a code review." }
+  ],
+  "forceProvider": "anthropic"
+}
+```
+
+### Multi-turn conversation
+
+```json
+{
+  "sessionId": "a1b2c3d4-e5f6-7890",
+  "messages": [
+    { "role": "user", "content": "Can you explain that last point in more detail?" }
+  ]
+}
+```
+
+### Response controls
+
+```json
+{
+  "messages": [
+    { "role": "user", "content": "Write 5 unusual names for a pet cat." }
+  ],
   "temperature": 0.9,
   "maxTokens": 200
 }
 ```
 
-#### Full Sample Response JSON
-The gateway returns not just the answer, but metadata about how it arrived there (the failover chain, timing, and cost).
-```json
-{
-  "message": {
-    "role": "assistant",
-    "content": "1. Sir Pounce-a-lot\n2. Chairman Meow\n3. Purr-lock Holmes\n4. Cat-rick Swayze\n5. The Great Catsby"
-  },
-  "metadata": {
-    "provider": "groq",
-    "model": "llama-3.3-70b-versatile",
-    "latencyMs": 850,
-    "cost": 0.00015,
-    "chain": [
-      {
-        "provider": "gemini",
-        "model": "gemini-2.5-flash",
-        "error": "Rate limit exceeded",
-        "latencyMs": 200
-      },
-      {
-        "provider": "groq",
-        "model": "llama-3.3-70b-versatile",
-        "latencyMs": 850
-      }
-    ]
-  }
-}
-```
+## Useful endpoints
 
-### Other Useful Endpoints
-- `GET /health` - Check the latency and status of all configured providers.
-- `GET /providers` - List which AI providers are currently active in your gateway.
-- `GET /analytics` - View token usage, request counts, and failover statistics.
-- `POST /uploads` - Upload a document (PDF, DOCX, TXT) to extract text for use in your prompts.
-- `GET /projects` - List active persistent workspaces (projects).
+- `GET /health` — health and latency information for configured providers.
+- `GET /health/models` — checks configured default models against provider catalogs when supported.
+- `GET /providers` — lists providers known to the gateway and their current configuration state.
+- `GET /analytics` — usage, cost, success, and failover statistics.
+- `POST /uploads` — upload documents or images for extraction/vision workflows.
+- `GET /projects` — list persistent projects.
 
+## Project context
 
-## API
+The gateway keeps durable context in SQLite so failover does not require the client to rebuild its state. Sessions and messages are persisted alongside project goals, tasks, decisions, workspace files, edit history, and snapshots.
 
-| Method | Route | Purpose |
-|---|---|---|
-| POST | `/chat` | Send a chat request; routes + fails over automatically |
-| POST | `/chat/stream` | Same, streamed via SSE |
-| GET | `/providers` | List all providers and which are configured |
-| GET | `/health` | Per-provider health/latency snapshot |
-| GET | `/analytics` | Usage, cost, and success-rate summary |
-| GET/POST | `/sessions` | List / create chat sessions |
-| GET | `/sessions/:id/messages` | Full conversation history |
-| DELETE | `/session/:id` | Delete a session |
-| POST/GET | `/projects` | Create / list projects (persistent project memory) |
-| GET/PATCH | `/projects/:id` | Read / update project memory |
-| PUT/GET/DELETE | `/projects/:id/files` | Workspace file management, versioned |
-| POST/GET | `/projects/:id/snapshots` | Create/list/restore full project snapshots |
-| POST | `/uploads` | Upload a PDF/DOCX/text file; extracts text (optionally saves into a project's workspace via `projectId` field) |
+For architecture details, known bugs, provider verification notes, current deployment information, and operational lessons learned, see [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md).
 
-### Example: basic chat request
+## Development
+
+Run the main checks before opening a pull request:
 
 ```bash
-curl -X POST http://localhost:4000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-        "messages": [{ "role": "user", "content": "Explain event loops in Node.js" }],
-        "taskType": "reasoning"
-      }'
+npm run lint
+npm test
+npm run build
 ```
 
-### Example: project-aware coding session
+The exact scripts available in a checkout are defined by `package.json`; some repository-specific checks may also be documented in `PROJECT_OVERVIEW.md`.
 
-```bash
-# 1. Create a project
-curl -X POST http://localhost:4000/projects \
-  -d '{"name":"My App","goal":"Build a REST API"}' -H 'Content-Type: application/json'
+## Security note
 
-# 2. Chat with project context attached — the orchestrator injects
-#    project memory + relevant files automatically, and if the provider
-#    fails mid-project, the next one picks up with full context intact.
-curl -X POST http://localhost:4000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-        "projectId": "<id from step 1>",
-        "taskType": "coding",
-        "messages": [{ "role": "user", "content": "Add a /users endpoint" }]
-      }'
-```
+Do not expose a deployment to the public internet without reviewing authentication, CORS, rate limiting, provider quota exposure, logging, and secret management. Never commit provider API keys or other credentials to the repository.
 
-## Frontend (React dashboard)
+## Contributing
 
-A chat UI lives in `frontend/` — dark, technical "control room" aesthetic
-built around the one thing this product actually does: route around failure.
-Every assistant reply shows its **routing chain** (which providers were
-tried, which one answered, in what time), a live provider health bar in the
-header, and a slide-over analytics panel.
-
-```bash
-cd frontend
-npm install
-cp .env.example .env   # points at http://localhost:4000 by default
-npm run dev
-```
-
-Opens on `http://localhost:5173`. Make sure the backend (`npm run dev` in
-the repo root) is running first — the frontend is just a client for it.
-
-```bash
-npm run build   # production build to frontend/dist
-```
-
-### What you'll see
-
-- **Sidebar** — chat sessions, persisted server-side, switch between them freely.
-- **Header controls** — pick a task type (routes to the best-suited provider
-  chain) or force a specific provider to test failover deliberately.
-- **Health bar** — live dot per provider (green = healthy, amber = degraded/
-  rate-limited, red = down), polled every 8s.
-- **Routing chain per message** — e.g. `gemini →(failed) groq · llama-3.3-70b-versatile · failover`.
-  This is the actual feature, made visible instead of hidden.
-- **Analytics panel** — total requests, success rate, failover count, cost,
-  and per-provider breakdown.
-- **Project switcher** — create a persistent project, attach it to a chat,
-  and the orchestrator automatically injects that project's goal, files,
-  and decisions as context on every message.
-- **File uploads** — attach a PDF, DOCX, or text file from the composer.
-  The backend extracts the text and folds it into your next message; if a
-  project is active, the file is also saved into that project's workspace
-  so later requests can reference it automatically.
-- **Image input (vision)** — attach an image and it's sent as real image
-  data to a vision-capable provider (Gemini, Anthropic, or OpenAI — the
-  only three configured here whose default model actually accepts image
-  input), the same way Claude.ai or ChatGPT handle a photo. The router
-  automatically restricts image-bearing requests to vision-capable
-  providers only; if none are configured, you get a clear error naming
-  which keys would enable it, instead of the image silently being ignored.
-  Note: unlike text, attached images are not currently persisted into
-  conversation history — they apply to the turn you send them in.
-
-## Testing
-
-
-```bash
-npm test              # full suite (35 tests)
-npm run test:watch    # watch mode
-npx jest --coverage   # with coverage report
-```
-
-## Folder structure
-
-```
-src/
-  config/       env + task-routing + pricing config
-  providers/    one adapter per LLM provider + shared registry
-  services/     router, orchestrator, project memory, workspace, analytics
-  controllers/  request handlers
-  routes/       Express route definitions
-  middleware/   validation, rate limiting, error handling
-  database/     SQLite schema + client
-  types/        shared TypeScript types
-  __tests__/    Jest test suite
-```
-
-## Troubleshooting
-
-- **`503 No providers are configured`** — set at least one `*_API_KEY` in `.env`.
-- **`502 All providers failed`** — every configured provider rejected the
-  request; check `/health` for per-provider error detail.
-- **`400 Invalid request body` on a large paste** — the request body has a
-  `MAX_PROMPT_LENGTH` cap (default 3.5M characters, ~875K tokens — enough
-  for roughly 50k+ lines of code). If you still hit this on something
-  larger, raise `MAX_PROMPT_LENGTH` in `.env`, but note the actual LLM call
-  will still fail over if it exceeds whichever provider's real context
-  window ends up handling it (Gemini 2.5 Flash-Lite's 1M-token window is
-  the largest configured here).
-- **SQLite locked errors under heavy load** — WAL mode is enabled by
-  default, but very high concurrency may still want a move to Postgres
-  (swap out `src/database/client.ts`).
-
-## License
-
-MIT — use freely, including as a portfolio project.
+Create a feature or fix branch from `main`, keep changes focused, run the relevant test/build checks, and open a pull request describing the problem, the change, and verification results.
