@@ -142,29 +142,10 @@ async function probeProvider(provider: ProviderName): Promise<void> {
     return;
   }
 
-  if (adapter.checkModelAvailability) {
-    try {
-      const availability = await withProbeTimeout(provider, adapter.checkModelAvailability());
-      state[provider].model = availability.model;
-      if (availability.status === 'unavailable') {
-        recordFailure(
-          provider,
-          'NOT_FOUND',
-          `${provider}: configured default model "${availability.model}" is unavailable. ${availability.detail ?? ''}`.trim()
-        );
-        return;
-      }
-    } catch (err) {
-      // The model-list check is advisory. Continue to the actual inference
-      // probe so an unsupported/blocked /models endpoint cannot hide a
-      // provider that can still serve requests.
-      logger.debug('Provider model discovery failed; continuing with inference probe', {
-        provider,
-        error: String(err),
-      });
-    }
-  }
-
+  // The real chat call is deliberately the source of truth. A model-list
+  // endpoint can authenticate successfully while inference is still blocked
+  // by billing/quota, model entitlement, account state, or provider policy.
+  // A one-token request exercises the same path the gateway actually uses.
   const startedAt = Date.now();
   try {
     const response = await withProbeTimeout(
