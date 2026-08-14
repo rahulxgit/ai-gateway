@@ -17,16 +17,7 @@ export function Composer({
   disabled,
   projectId,
 }: {
-  // apiText: full content sent to the model (includes dumped file text).
-  // displayText: what the user actually typed, shown in the chat bubble —
-  // never the raw extracted dump, matching Claude.ai/ChatGPT's behavior.
-  // attachmentNames: text-file names, rendered as clean chips instead.
-  onSend: (
-    apiText: string,
-    displayText: string,
-    images?: ImageAttachment[],
-    attachmentNames?: string[]
-  ) => void;
+  onSend: (apiText: string, displayText: string, images?: ImageAttachment[], attachmentNames?: string[]) => void;
   disabled: boolean;
   projectId?: string;
 }) {
@@ -36,25 +27,21 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = async (files: FileList | null) => {
-    if (!files) return;
+    if (!files || disabled) return;
     for (const file of Array.from(files)) {
       const id = `${file.name}-${Date.now()}-${Math.random()}`;
       setAttachments((prev) => [...prev, { id, filename: file.name, status: 'uploading' }]);
       try {
         const result = await api.uploadFile(file, projectId);
         if (result.kind === 'unsupported') {
-          setAttachments((prev) =>
-            prev.map((a) => (a.id === id ? { ...a, status: 'error', error: 'Unsupported file type' } : a))
-          );
+          setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'error', error: 'Unsupported file type' } : a)));
         } else {
           setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'ready', result } : a)));
         }
       } catch (err) {
-        setAttachments((prev) =>
-          prev.map((a) =>
-            a.id === id ? { ...a, status: 'error', error: err instanceof Error ? err.message : 'Upload failed' } : a
-          )
-        );
+        setAttachments((prev) => prev.map((a) => (
+          a.id === id ? { ...a, status: 'error', error: err instanceof Error ? err.message : 'Upload failed' } : a
+        )));
       }
     }
   };
@@ -66,22 +53,13 @@ export function Composer({
     const readyAttachments = attachments.filter((a) => a.status === 'ready' && a.result);
     if ((!text && readyAttachments.length === 0) || disabled) return;
 
-    // Text-extractable files (PDF/DOCX/plain text) get prepended as
-    // clearly-delimited context ahead of the user's message for the API
-    // call only — the chat bubble never shows this raw dump, just a file
-    // chip, same as Claude.ai/ChatGPT. Images travel as real image data
-    // so a vision-capable provider actually sees the picture.
     const textAttachments = readyAttachments.filter((a) => a.result!.kind === 'text');
     const imageAttachments = readyAttachments.filter((a) => a.result!.kind === 'image');
-
     const attachmentBlocks = textAttachments
       .map((a) => `--- Attached file: ${a.result!.filename} ---\n${a.result!.extractedText}\n--- end of attachment ---`)
       .join('\n\n');
     const apiText = attachmentBlocks ? `${attachmentBlocks}\n\n${text}`.trim() : text;
-    // Fallback text only used when there's truly nothing else to send to
-    // the model (backend requires non-empty content) — never shown in the UI.
     const apiTextOrFallback = apiText || 'What is in this image?';
-
     const images: ImageAttachment[] = imageAttachments.map((a) => ({
       mimeType: a.result!.mimeType,
       base64: a.result!.base64!,
@@ -102,36 +80,39 @@ export function Composer({
   };
 
   const hasUploading = attachments.some((a) => a.status === 'uploading');
+  const canSend = !disabled && !hasUploading && (!!value.trim() || attachments.some((a) => a.status === 'ready'));
+  const wordCount = value.trim() ? value.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="rounded-xl border border-hairline bg-panel-raised p-2 focus-within:border-signal-dim">
+    <div className="overflow-hidden rounded-2xl border border-hairline bg-panel shadow-[0_10px_40px_rgba(0,0,0,0.18)] transition focus-within:border-signal-dim/80 focus-within:shadow-[0_12px_50px_rgba(0,0,0,0.24)]">
       {attachments.length > 0 && (
-        <div className="mb-1.5 flex flex-wrap gap-1.5 px-1">
-          {attachments.map((a) => {
-            const isImage = a.result?.kind === 'image' && a.result.base64;
+        <div className="flex flex-wrap gap-2 border-b border-hairline/80 bg-panel-raised/30 px-3 py-2.5">
+          {attachments.map((attachment) => {
+            const isImage = attachment.result?.kind === 'image' && attachment.result.base64;
             return (
               <div
-                key={a.id}
-                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[12px] ${
-                  a.status === 'error'
-                    ? 'border-danger/40 bg-danger/10 text-danger'
-                    : a.status === 'uploading'
+                key={attachment.id}
+                className={`flex max-w-full items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs ${
+                  attachment.status === 'error'
+                    ? 'border-danger/30 bg-danger/10 text-danger'
+                    : attachment.status === 'uploading'
                       ? 'border-hairline bg-panel text-ink-faint'
-                      : 'border-ok-dim bg-ok-dim/20 text-ok'
+                      : 'border-ok-dim/60 bg-ok/10 text-ok'
                 }`}
               >
-                {a.status === 'uploading' && <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-ink-faint" />}
+                {attachment.status === 'uploading' && <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-ink-faint" />}
                 {isImage && (
-                  <img
-                    src={`data:${a.result!.mimeType};base64,${a.result!.base64}`}
-                    alt={a.filename}
-                    className="h-5 w-5 rounded object-cover"
-                  />
+                  <img src={`data:${attachment.result!.mimeType};base64,${attachment.result!.base64}`} alt="" className="h-7 w-7 rounded-lg object-cover" />
                 )}
-                <span className="max-w-[160px] truncate">{a.filename}</span>
-                {a.status === 'error' && <span className="opacity-80">· {a.error}</span>}
-                <button onClick={() => removeAttachment(a.id)} className="opacity-60 hover:opacity-100">
-                  ✕
+                {!isImage && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+                <span className="max-w-[180px] truncate font-medium">{attachment.filename}</span>
+                {attachment.status === 'error' && <span className="max-w-[160px] truncate opacity-80">· {attachment.error}</span>}
+                <button type="button" onClick={() => removeAttachment(attachment.id)} className="rounded-md px-1 text-current/60 hover:bg-black/10 hover:text-current" aria-label={`Remove ${attachment.filename}`}>
+                  ×
                 </button>
               </div>
             );
@@ -139,7 +120,7 @@ export function Composer({
         </div>
       )}
 
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-2 p-2.5">
         <input
           ref={fileInputRef}
           type="file"
@@ -152,46 +133,55 @@ export function Composer({
           }}
         />
         <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
           title="Attach an image, PDF, DOCX, or text file"
-          className="shrink-0 rounded-lg border border-hairline p-2 text-ink-muted transition hover:border-signal-dim hover:text-signal disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Attach file"
+          className="icon-button h-10 w-10 rounded-xl disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3.5 3.5 0 014.95 4.95l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3.5 3.5 0 014.95 4.95l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
 
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            e.target.style.height = 'auto';
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder="Message the gateway…"
-          rows={1}
-          className="max-h-48 flex-1 resize-none bg-transparent px-1 py-1.5 text-base text-ink placeholder:text-ink-faint outline-none"
-        />
+        <div className="min-w-0 flex-1">
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 220)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            placeholder={projectId ? 'Message this project…' : 'Ask the gateway anything…'}
+            rows={1}
+            aria-label="Message"
+            className="max-h-56 min-h-10 w-full resize-none bg-transparent px-1 py-2 text-base leading-6 text-ink placeholder:text-ink-faint outline-none"
+          />
+          <div className="flex items-center justify-between px-1 pb-0.5 pt-0.5 font-mono text-[10px] text-ink-faint">
+            <span>{hasUploading ? 'Uploading attachment…' : 'Shift+Enter for newline'}</span>
+            <span>{wordCount > 0 ? `${wordCount} words` : 'Ready'}</span>
+          </div>
+        </div>
+
         <button
+          type="button"
           onClick={submit}
-          disabled={disabled || hasUploading || (!value.trim() && attachments.every((a) => a.status !== 'ready'))}
-          className="shrink-0 rounded-lg bg-signal px-3.5 py-2 text-sm font-medium text-canvas transition disabled:cursor-not-allowed disabled:bg-panel disabled:text-ink-faint"
+          disabled={!canSend}
+          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-signal px-4 text-sm font-semibold text-canvas shadow-sm transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-panel-raised disabled:text-ink-faint disabled:shadow-none"
         >
-          Send
+          <span className="hidden sm:inline">Send</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M22 2L11 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
       </div>
     </div>
