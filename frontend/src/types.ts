@@ -67,6 +67,7 @@ export type ProviderHealthStatus =
   | 'model_unavailable'
   | 'account_suspended'
   | 'unavailable'
+  | 'paid_only'
   | 'down'
   | 'unknown';
 
@@ -110,27 +111,9 @@ export interface AnalyticsSummary {
 }
 
 export const ALL_PROVIDERS: ProviderName[] = [
-  'gemini',
-  'anthropic',
-  'openai',
-  'groq',
-  'together',
-  'openrouter',
-  'huggingface',
-  'deepseek',
-  'kimi',
-  'cerebras',
-  'mistral',
-  'cloudflare',
-  'fireworks',
-  'inference',
-  'nebius',
-  'sambanova',
-  'nvidia',
-  'novita',
-  'baseten',
-  'modelscope',
-  'aimlapi',
+  'gemini', 'anthropic', 'openai', 'groq', 'together', 'openrouter', 'huggingface',
+  'deepseek', 'kimi', 'cerebras', 'mistral', 'cloudflare', 'fireworks', 'inference',
+  'nebius', 'sambanova', 'nvidia', 'novita', 'baseten', 'modelscope', 'aimlapi',
 ];
 
 export const TASK_TYPES: { value: TaskType; label: string }[] = [
@@ -150,27 +133,27 @@ export interface ProviderMeta {
 }
 
 export const PROVIDER_META: Record<ProviderName, ProviderMeta> = {
-  gemini: { label: 'Gemini', free: true, note: 'Vision · fast free tier' },
-  anthropic: { label: 'Anthropic', free: false, note: 'Vision · Claude' },
-  openai: { label: 'OpenAI', free: false, note: 'Vision · GPT' },
-  groq: { label: 'Groq', free: true, note: 'Fastest inference' },
-  together: { label: 'Together AI', free: true, note: '131K context' },
-  openrouter: { label: 'OpenRouter', free: true, note: 'Free-tagged models' },
-  huggingface: { label: 'Hugging Face', free: true, note: 'Router-proxied' },
-  deepseek: { label: 'DeepSeek', free: true, note: '384K output, cheap' },
-  kimi: { label: 'Kimi (Moonshot)', free: false, note: '256K context' },
-  cerebras: { label: 'Cerebras', free: true, note: '1M tokens/day, fastest' },
-  mistral: { label: 'Mistral', free: true, note: '~1B tokens/mo, Codestral' },
-  cloudflare: { label: 'Cloudflare Workers AI', free: true, note: 'Needs account ID' },
-  fireworks: { label: 'Fireworks AI', free: true, note: 'Free trial credits' },
-  inference: { label: 'Inference.net', free: true, note: 'Free tier' },
-  nebius: { label: 'Nebius AI Studio', free: true, note: 'Free trial credits' },
-  sambanova: { label: 'SambaNova Cloud', free: true, note: 'Up to 256K context' },
-  nvidia: { label: 'NVIDIA NIM', free: true, note: 'Free developer tier' },
-  novita: { label: 'Novita AI', free: true, note: 'Free starter credits' },
-  baseten: { label: 'Baseten', free: true, note: 'Free trial credits' },
-  modelscope: { label: 'ModelScope', free: true, note: 'Free tier (Alibaba)' },
-  aimlapi: { label: 'AI/ML API', free: true, note: 'Free credits, model hub' },
+  gemini: { label: 'Gemini', free: true, note: 'Gemini 2.5 Flash-Lite · free tier' },
+  anthropic: { label: 'Anthropic', free: false, note: 'Paid API · Claude' },
+  openai: { label: 'OpenAI', free: false, note: 'Paid API · GPT' },
+  groq: { label: 'Groq', free: true, note: 'GPT-OSS 20B · free plan' },
+  together: { label: 'Together AI', free: false, note: 'Paid API · OpenAI-compatible' },
+  openrouter: { label: 'OpenRouter', free: true, note: 'openrouter/free · free models' },
+  huggingface: { label: 'Hugging Face', free: true, note: '$0.10 monthly free credit' },
+  deepseek: { label: 'DeepSeek', free: false, note: 'Paid API / balance required' },
+  kimi: { label: 'Kimi (Moonshot)', free: false, note: 'Paid API' },
+  cerebras: { label: 'Cerebras', free: true, note: 'Free-tier inference' },
+  mistral: { label: 'Mistral', free: true, note: 'Experiment/free tier' },
+  cloudflare: { label: 'Cloudflare Workers AI', free: true, note: '10K free Neurons/day' },
+  fireworks: { label: 'Fireworks AI', free: false, note: 'Trial/paid credits' },
+  inference: { label: 'Inference.net', free: false, note: 'Trial credits, then paid' },
+  nebius: { label: 'Nebius AI Studio', free: false, note: 'Trial/paid credits' },
+  sambanova: { label: 'SambaNova Cloud', free: true, note: 'Free-tier access varies by account' },
+  nvidia: { label: 'NVIDIA API', free: true, note: 'Free/trial model access' },
+  novita: { label: 'Novita AI', free: false, note: 'Starter/trial credits' },
+  baseten: { label: 'Baseten', free: false, note: 'Trial/paid inference' },
+  modelscope: { label: 'ModelScope', free: true, note: 'Inference quota/free tier' },
+  aimlapi: { label: 'AI/ML API', free: false, note: 'Trial/paid credits' },
 };
 
 export interface ProjectMemory {
@@ -198,10 +181,5 @@ export interface UploadResult {
 }
 
 export const OPENROUTER_FREE_MODELS: { value: string; label: string }[] = [
-  { value: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek Chat V3.1 (free)' },
-  { value: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (free, reasoning)' },
-  { value: 'moonshotai/kimi-k2:free', label: 'Kimi K2 (free)' },
-  { value: 'qwen/qwen3-235b-a22b:free', label: 'Qwen3 235B (free)' },
-  { value: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (free)' },
-  { value: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B (free)' },
+  { value: 'openrouter/free', label: 'OpenRouter Free Router' },
 ];
