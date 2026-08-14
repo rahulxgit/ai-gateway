@@ -7,6 +7,12 @@ const STATUS_COLOR: Record<ProviderHealth['status'], string> = {
   healthy: 'bg-ok',
   degraded: 'bg-signal',
   rate_limited: 'bg-signal',
+  quota_exhausted: 'bg-signal',
+  authentication_failed: 'bg-danger',
+  forbidden: 'bg-danger',
+  model_unavailable: 'bg-danger',
+  account_suspended: 'bg-danger',
+  unavailable: 'bg-danger',
   down: 'bg-danger',
   unknown: 'bg-ink-faint',
 };
@@ -15,11 +21,29 @@ const STATUS_LABEL: Record<ProviderHealth['status'], string> = {
   healthy: 'Healthy',
   degraded: 'Degraded',
   rate_limited: 'Rate limited',
+  quota_exhausted: 'Quota exhausted',
+  authentication_failed: 'Authentication failed',
+  forbidden: 'Forbidden / edge blocked',
+  model_unavailable: 'Model unavailable',
+  account_suspended: 'Account suspended',
+  unavailable: 'Unavailable',
   down: 'Down',
-  unknown: 'Unknown',
+  unknown: 'Checking',
 };
 
-const STATUS_ORDER: ProviderHealth['status'][] = ['down', 'rate_limited', 'degraded', 'unknown', 'healthy'];
+const STATUS_ORDER: ProviderHealth['status'][] = [
+  'authentication_failed',
+  'forbidden',
+  'quota_exhausted',
+  'model_unavailable',
+  'account_suspended',
+  'unavailable',
+  'down',
+  'rate_limited',
+  'degraded',
+  'unknown',
+  'healthy',
+];
 
 export function HealthBar() {
   const [providers, setProviders] = useState<ProviderHealth[]>([]);
@@ -69,7 +93,12 @@ export function HealthBar() {
   }, [providers]);
 
   const sorted = useMemo(
-    () => [...providers].sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || a.provider.localeCompare(b.provider)),
+    () =>
+      [...providers].sort(
+        (a, b) =>
+          STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) ||
+          a.provider.localeCompare(b.provider)
+      ),
     [providers]
   );
 
@@ -85,7 +114,11 @@ export function HealthBar() {
         aria-label="Provider health"
       >
         <span className="relative flex h-2 w-2 items-center justify-center">
-          {(worstStatus === 'rate_limited' || worstStatus === 'degraded') && <span className="absolute h-2 w-2 animate-ping rounded-full bg-signal/30" />}
+          {(worstStatus === 'rate_limited' ||
+            worstStatus === 'quota_exhausted' ||
+            worstStatus === 'degraded') && (
+            <span className="absolute h-2 w-2 animate-ping rounded-full bg-signal/30" />
+          )}
           <span className={`relative h-1.5 w-1.5 rounded-full ${STATUS_COLOR[worstStatus]}`} />
         </span>
         <span>{providers.length ? `${healthyCount}/${providers.length} healthy` : 'Checking health…'}</span>
@@ -95,12 +128,16 @@ export function HealthBar() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-40 mt-2 w-72 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-hairline bg-panel shadow-2xl" role="dialog" aria-label="Provider health details">
+        <div
+          className="absolute right-0 top-full z-40 mt-2 w-[27rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-hairline bg-panel shadow-2xl"
+          role="dialog"
+          aria-label="Provider health details"
+        >
           <div className="border-b border-hairline/80 bg-panel-raised/40 px-3.5 py-3">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-ink">Provider health</p>
-                <p className="mt-0.5 text-[11px] text-ink-faint">Updated every 8 seconds</p>
+                <p className="mt-0.5 text-[11px] text-ink-faint">Live API probes refresh at most once per minute</p>
               </div>
               <span className="rounded-full border border-hairline px-2 py-1 font-mono text-[10px] text-ink-faint">
                 {STATUS_LABEL[worstStatus]}
@@ -108,17 +145,33 @@ export function HealthBar() {
             </div>
           </div>
 
-          <div className="max-h-80 overflow-y-auto p-1.5 scrollbar-thin">
+          <div className="max-h-[30rem] overflow-y-auto p-1.5 scrollbar-thin">
             {sorted.length === 0 && <p className="px-3 py-4 text-xs text-ink-faint">No provider health data yet.</p>}
             {sorted.map((provider) => (
-              <div key={provider.provider} className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 transition hover:bg-panel-raised/70" title={provider.lastError ?? provider.status}>
-                <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_COLOR[provider.status]}`} />
-                <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink">
-                  {PROVIDER_META[provider.provider]?.label ?? provider.provider}
-                </span>
-                <span className="shrink-0 text-[10px] text-ink-faint">
-                  {provider.status === 'healthy' && provider.avgLatencyMs ? `${Math.round(provider.avgLatencyMs)}ms` : STATUS_LABEL[provider.status]}
-                </span>
+              <div
+                key={provider.provider}
+                className="flex items-start gap-2.5 rounded-xl px-2.5 py-2 transition hover:bg-panel-raised/70"
+                title={provider.lastError ?? provider.statusMessage ?? STATUS_LABEL[provider.status]}
+              >
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${STATUS_COLOR[provider.status]}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-xs font-medium text-ink">
+                      {PROVIDER_META[provider.provider]?.label ?? provider.provider}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-medium text-ink-faint">
+                      {provider.status === 'healthy' && provider.avgLatencyMs
+                        ? `${Math.round(provider.avgLatencyMs)}ms`
+                        : STATUS_LABEL[provider.status]}
+                    </span>
+                  </div>
+                  {(provider.statusMessage || provider.lastError || provider.model) && (
+                    <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-ink-faint">
+                      {provider.statusMessage ?? provider.lastError}
+                      {provider.model ? ` · ${provider.model}` : ''}
+                    </p>
+                  )}
+                </div>
               </div>
             ))}
           </div>
