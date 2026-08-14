@@ -7,9 +7,33 @@ const STATUS_DOT: Record<ProviderHealth['status'], string> = {
   healthy: 'bg-ok',
   degraded: 'bg-signal',
   rate_limited: 'bg-signal',
+  quota_exhausted: 'bg-signal',
+  authentication_failed: 'bg-danger',
+  forbidden: 'bg-danger',
+  model_unavailable: 'bg-danger',
+  account_suspended: 'bg-danger',
+  unavailable: 'bg-danger',
   down: 'bg-danger',
   unknown: 'bg-ink-faint',
 };
+
+const STATUS_LABEL: Record<ProviderHealth['status'], string> = {
+  healthy: 'Healthy',
+  degraded: 'Degraded',
+  rate_limited: 'Rate limited',
+  quota_exhausted: 'Quota exhausted',
+  authentication_failed: 'Authentication failed',
+  forbidden: 'Forbidden / edge blocked',
+  model_unavailable: 'Model unavailable',
+  account_suspended: 'Account suspended',
+  unavailable: 'Unavailable',
+  down: 'Down',
+  unknown: 'Checking',
+};
+
+function shouldPulse(status: ProviderHealth['status']): boolean {
+  return status === 'degraded' || status === 'rate_limited' || status === 'quota_exhausted';
+}
 
 /**
  * Searchable provider combobox. A plain <select> stopped scaling once the
@@ -100,7 +124,7 @@ export function ProviderPicker({
         {currentStatus && (
           <span
             className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[currentStatus]} ${
-              currentStatus === 'rate_limited' || currentStatus === 'degraded' ? 'animate-pulse-dot' : ''
+              shouldPulse(currentStatus) ? 'animate-pulse-dot' : ''
             }`}
           />
         )}
@@ -158,10 +182,11 @@ export function ProviderPicker({
                 >
                   <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[status]} ${
-                      status === 'rate_limited' || status === 'degraded' ? 'animate-pulse-dot' : ''
+                      shouldPulse(status) ? 'animate-pulse-dot' : ''
                     }`}
                   />
                   <span className="flex-1 truncate">{meta.label}</span>
+                  <span className="shrink-0 text-[9px] text-ink-faint">{STATUS_LABEL[status]}</span>
                   {meta.free && (
                     <span className="shrink-0 rounded border border-ok-dim bg-ok-dim/10 px-1 py-0.5 text-[9px] uppercase tracking-wide text-ok">
                       free
