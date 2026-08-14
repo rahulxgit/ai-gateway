@@ -6,6 +6,7 @@ jest.mock('../services/orchestrator.service', () => ({
 }));
 jest.mock('../services/health.service', () => ({
   getHealthSnapshot: jest.fn(),
+  refreshProviderHealth: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../providers/registry', () => ({
   listConfiguredProviders: jest.fn(),
@@ -16,7 +17,7 @@ jest.mock('../services/model-validation.service', () => ({
 }));
 
 import { orchestrateChat } from '../services/orchestrator.service';
-import { getHealthSnapshot } from '../services/health.service';
+import { getHealthSnapshot, refreshProviderHealth } from '../services/health.service';
 import { listConfiguredProviders, listAllProviders } from '../providers/registry';
 import { validateConfiguredModels } from '../services/model-validation.service';
 import { postChat, getProviders, getHealth, getModelValidation } from '../controllers/chat.controller';
@@ -76,13 +77,14 @@ describe('chat.controller', () => {
   });
 
   describe('getHealth', () => {
-    it('wraps the health snapshot with an ok status', () => {
+    it('awaits the health refresh and returns the latest snapshot', async () => {
       const snapshot = [{ provider: 'gemini', status: 'healthy', lastCheckedAt: 'x', consecutiveFailures: 0 }];
       (getHealthSnapshot as jest.Mock).mockReturnValue(snapshot);
 
       const res = mockRes();
-      getHealth({} as Request, res);
+      await getHealth({} as Request, res);
 
+      expect(refreshProviderHealth).toHaveBeenCalledWith();
       expect(res.json).toHaveBeenCalledWith({ status: 'ok', providers: snapshot });
     });
   });
