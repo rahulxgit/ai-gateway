@@ -1,19 +1,15 @@
 import { ProviderName, TaskType } from '../types';
 
-// Providers whose documented/free-tier access can be used by automatic routing.
-// Paid-only or trial-credit providers remain available through forceProvider but
-// are never selected automatically, so the gateway cannot unexpectedly spend money.
+// Automatic routing is restricted to providers with a documented $0/free
+// access path for the selected default model. Trial credits or monthly
+// starter credits are not treated as guaranteed free routing capacity.
 export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'gemini',
   'groq',
   'openrouter',
-  'huggingface',
   'cerebras',
   'mistral',
   'cloudflare',
-  'nvidia',
-  'sambanova',
-  'modelscope',
 ];
 
 export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
@@ -23,11 +19,12 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'cerebras',
   'mistral',
   'cloudflare',
-  'nvidia',
+  // These remain supported for explicit/manual use but are never selected
+  // automatically because their free access is credit/trial/account-tier dependent.
   'huggingface',
+  'nvidia',
   'sambanova',
   'modelscope',
-  // Paid/trial providers stay after the free pool for explicit/manual use.
   'deepseek',
   'together',
   'anthropic',
@@ -42,13 +39,13 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
 ];
 
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
-  coding: ['groq', 'openrouter', 'deepseek', 'mistral', 'gemini'],
+  coding: ['groq', 'openrouter', 'mistral', 'gemini', 'cerebras'],
   reasoning: ['openrouter', 'groq', 'gemini', 'cerebras'],
   creative: ['gemini', 'openrouter', 'mistral'],
   fast: ['groq', 'cerebras', 'gemini', 'openrouter'],
   cheap: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral'],
-  'large-context': ['openrouter', 'gemini', 'huggingface', 'mistral'],
-  general: DEFAULT_FAILOVER_ORDER.filter((provider) => FREE_AUTO_PROVIDERS.includes(provider)),
+  'large-context': ['openrouter', 'gemini', 'mistral', 'cerebras'],
+  general: FREE_AUTO_PROVIDERS,
 };
 
 export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
@@ -58,7 +55,7 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   groq: 0,
   together: 0.0002,
   openrouter: 0,
-  huggingface: 0,
+  huggingface: 0.0001,
   deepseek: 0.00021,
   kimi: 0.0018,
   cerebras: 0,
@@ -67,11 +64,11 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   fireworks: 0.0002,
   inference: 0.0001,
   nebius: 0.0002,
-  sambanova: 0,
-  nvidia: 0,
+  sambanova: 0.0001,
+  nvidia: 0.0002,
   novita: 0.0002,
   baseten: 0.0002,
-  modelscope: 0,
+  modelscope: 0.0001,
   aimlapi: 0.0002,
 };
 
@@ -86,8 +83,6 @@ export function buildProviderOrder(
 
   const preferred = (TASK_ROUTING[taskType ?? 'general'] ?? TASK_ROUTING.general)
     .filter((p) => FREE_AUTO_PROVIDERS.includes(p));
-  const rest = DEFAULT_FAILOVER_ORDER.filter(
-    (p) => FREE_AUTO_PROVIDERS.includes(p) && !preferred.includes(p)
-  );
+  const rest = FREE_AUTO_PROVIDERS.filter((p) => !preferred.includes(p));
   return [...preferred, ...rest];
 }
