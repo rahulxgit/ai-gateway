@@ -5,7 +5,8 @@ import { logger } from '../utils/logger';
 const LATENCY_WINDOW = 20;
 const DEGRADED_LATENCY_MS = 6000;
 const DOWN_AFTER_FAILURES = 3;
-const HEALTH_REFRESH_TTL_MS = 60_000;
+const HEALTH_REFRESH_TTL_MS = 120_000;
+const HEALTH_PROBE_TIMEOUT_MS = 8_000;
 const HEALTH_PROBE_MAX_TOKENS = 1;
 
 interface HealthState extends ProviderHealth {
@@ -52,6 +53,28 @@ function statusFromErrorCode(code: ProviderErrorCode): ProviderHealthStatus {
   }
 }
 
+function timeoutError(provider: ProviderName): ProviderError {
+  return new ProviderError(
+    provider,
+    'TIMEOUT',
+    `${provider}: health probe exceeded ${HEALTH_PROBE_TIMEOUT_MS}ms`
+  );
+}
+
+async function withProbeTimeout<T>(provider: ProviderName, work: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(timeoutError(provider)), HEALTH_PROBE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 export function recordSuccess(provider: ProviderName, latencyMs: number, correlationId?: string): void {
   const s = state[provider];
   s.consecutiveFailures = 0;
@@ -81,8 +104,6 @@ export function recordFailure(
   s.errorCode = errorCode as ProviderErrorCode;
   const classifiedStatus = statusFromErrorCode(errorCode as ProviderErrorCode);
 
-  // Permanent credential/billing/model states should be visible immediately.
-  // Transport/provider instability stays degraded until repeated failures.
   if (['AUTH_ERROR', 'FORBIDDEN', 'RATE_LIMITED', 'QUOTA_EXCEEDED', 'INSUFFICIENT_CREDITS', 'NOT_FOUND', 'ACCOUNT_SUSPENDED'].includes(errorCode)) {
     s.status = classifiedStatus;
   } else if (s.consecutiveFailures >= DOWN_AFTER_FAILURES) {
@@ -121,11 +142,9 @@ async function probeProvider(provider: ProviderName): Promise<void> {
     return;
   }
 
-  // First use the provider's own model catalog when available. This catches
-  // deprecated/unsupported default models without spending inference tokens.
   if (adapter.checkModelAvailability) {
     try {
-      const availability = await adapter.checkModelAvailability();
+      const availability = await withProbeTimeout(provider, adapter.checkModelAvailability());
       state[provider].model = availability.model;
       if (availability.status === 'unavailable') {
         recordFailure(
@@ -136,8 +155,9 @@ async function probeProvider(provider: ProviderName): Promise<void> {
         return;
       }
     } catch (err) {
-      // Model discovery is advisory. Continue to the real inference probe so
-      // an unavailable /models endpoint cannot hide a usable provider.
+      // The model-list check is advisory. Continue to the actual inference
+      // probe so an unsupported/blocked /models endpoint cannot hide a
+      // provider that can still serve requests.
       logger.debug('Provider model discovery failed; continuing with inference probe', {
         provider,
         error: String(err),
@@ -147,11 +167,14 @@ async function probeProvider(provider: ProviderName): Promise<void> {
 
   const startedAt = Date.now();
   try {
-    const response = await adapter.chat({
-      messages: [{ role: 'user', content: 'Reply with OK.' }],
-      temperature: 0,
-      maxTokens: HEALTH_PROBE_MAX_TOKENS,
-    });
+    const response = await withProbeTimeout(
+      provider,
+      adapter.chat({
+        messages: [{ role: 'user', content: 'Reply with OK.' }],
+        temperature: 0,
+        maxTokens: HEALTH_PROBE_MAX_TOKENS,
+      })
+    );
     state[provider].model = response.model;
     recordSuccess(provider, Date.now() - startedAt);
   } catch (err) {
@@ -165,16 +188,8 @@ export async function refreshProviderHealth(force = false): Promise<void> {
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
-    const configured = Object.keys(providerRegistry).filter((name) =>
-      providerRegistry[name as ProviderName].isConfigured()
-    ) as ProviderName[];
-    const unconfigured = (Object.keys(providerRegistry) as ProviderName[]).filter((name) => !configured.includes(name));
-
-    // Probe providers concurrently so one slow/dead provider cannot block the
-    // rest of the health refresh. Individual provider adapters retain their
-    // normal timeout configuration.
-    await Promise.all(configured.map((provider) => probeProvider(provider)));
-    for (const provider of unconfigured) await probeProvider(provider);
+    const providers = Object.keys(providerRegistry) as ProviderName[];
+    await Promise.all(providers.map((provider) => probeProvider(provider)));
     lastRefreshAt = Date.now();
   })().finally(() => {
     refreshInFlight = null;
