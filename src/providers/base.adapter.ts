@@ -1,11 +1,6 @@
 import { AxiosError } from 'axios';
 import { ProviderError, ProviderErrorCode, ProviderName } from '../types';
 
-/**
- * Convert raw provider/network failures into stable gateway error codes.
- * Health reporting uses these codes to distinguish invalid credentials,
- * edge/proxy 403s, billing failures, rate limits, and model failures.
- */
 export function classifyError(provider: ProviderName, err: unknown): ProviderError {
   if (err instanceof ProviderError) return err;
 
@@ -16,53 +11,47 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
   }
 
   const status = axiosErr?.response?.status;
+  const body = axiosErr.response?.data as
+    | { message?: string; reason?: string; code?: string | number; error?: { message?: string } | string }
+    | undefined;
+  const msg = (
+    body?.message ??
+    body?.reason ??
+    body?.code?.toString() ??
+    (typeof body?.error === 'string' ? body.error : body?.error?.message) ??
+    ''
+  ).toString();
 
-  if (status === 401 || status === 403) {
-    const body = axiosErr.response?.data as
-      | { message?: string; reason?: string; error?: { message?: string } | string }
-      | undefined;
-    const msg =
-      body?.message ??
-      body?.reason ??
-      (typeof body?.error === 'string' ? body.error : body?.error?.message) ??
-      '';
+  if (status === 401) {
+    return new ProviderError(provider, 'AUTH_ERROR', `${provider}: authentication failed${msg ? ` — ${msg}` : ''}`, status);
+  }
 
-    if (/not enough balance|insufficient (credit|balance|funds)|credit balance|low balance|add (a )?payment method/i.test(msg)) {
+  if (status === 403) {
+    if (/not enough balance|insufficient (credit|balance|funds)|credit balance|low balance|add (a )?payment method|billing|payment required/i.test(msg)) {
       return new ProviderError(provider, 'INSUFFICIENT_CREDITS', `${provider}: ${msg}`, status);
     }
-
-    if (status === 401) {
-      return new ProviderError(provider, 'AUTH_ERROR', `${provider}: authentication failed`, status);
+    if (/invalid (api[-_ ]?key|token|credential)|unauthorized|authentication failed|not authenticated|bad token/i.test(msg)) {
+      return new ProviderError(provider, 'AUTH_ERROR', `${provider}: authentication failed — ${msg}`, status);
     }
-
     return new ProviderError(
       provider,
       'FORBIDDEN',
-      `${provider}: access forbidden (provider or network edge denied the request)`,
+      `${provider}: access forbidden (provider or network edge denied the request)${msg ? ` — ${msg}` : ''}`,
       status
     );
   }
 
   if (status === 402) {
-    const body = axiosErr.response?.data as
-      | { message?: string; error?: { message?: string } | string }
-      | undefined;
-    const msg =
-      body?.message ?? (typeof body?.error === 'string' ? body.error : body?.error?.message) ?? '';
-    return new ProviderError(
-      provider,
-      'INSUFFICIENT_CREDITS',
-      `${provider}: payment required${msg ? ` — ${msg}` : ''}`,
-      status
-    );
+    return new ProviderError(provider, 'INSUFFICIENT_CREDITS', `${provider}: payment required${msg ? ` — ${msg}` : ''}`, status);
   }
 
   if (status === 412) {
-    const body = axiosErr.response?.data as { error?: { message?: string } | string } | undefined;
-    const msg =
-      (typeof body?.error === 'string' ? body.error : body?.error?.message) ??
-      'account suspended (billing/spending limit)';
-    return new ProviderError(provider, 'ACCOUNT_SUSPENDED', `${provider}: ${msg}`, status);
+    return new ProviderError(
+      provider,
+      'ACCOUNT_SUSPENDED',
+      `${provider}: ${msg || 'account suspended (billing/spending limit)'}`,
+      status
+    );
   }
 
   if (status === 404) {
@@ -75,36 +64,25 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
   }
 
   if (status === 429) {
-    const body = axiosErr.response?.data as
-      | { error?: { message?: string } | string; message?: string }
-      | undefined;
-    const msg =
-      (typeof body?.error === 'string' ? body.error : body?.error?.message) ?? body?.message ?? '';
-    const code: ProviderErrorCode = /quota|insufficient|credit/i.test(msg)
+    const code: ProviderErrorCode = /quota|insufficient|credit|balance/i.test(msg)
       ? 'QUOTA_EXCEEDED'
       : 'RATE_LIMITED';
     return new ProviderError(provider, code, `${provider}: ${msg || 'rate limited'}`, status);
   }
 
   if (status === 413) {
-    const body = axiosErr.response?.data as { error?: { message?: string } | string } | undefined;
-    const msg =
-      (typeof body?.error === 'string' ? body.error : body?.error?.message) ??
-      'request entity too large';
     if (/tokens per minute|\btpm\b|limit \d+,\s*requested \d+/i.test(msg)) {
       return new ProviderError(provider, 'RATE_LIMITED', `${provider}: ${msg}`, status);
     }
-    return new ProviderError(provider, 'INVALID_REQUEST', `${provider}: ${msg}`, status);
+    return new ProviderError(provider, 'INVALID_REQUEST', `${provider}: ${msg || 'request entity too large'}`, status);
   }
 
   if (status === 400 || status === 422) {
-    const body = axiosErr.response?.data as
-      | { error?: { message?: string } | string; message?: string }
-      | undefined;
-    const msg =
-      (typeof body?.error === 'string' ? body.error : body?.error?.message) ?? body?.message ?? '';
-    if (/credit balance|insufficient (credit|balance|funds)|add (a )?payment method|low balance/i.test(msg)) {
+    if (/credit balance|insufficient (credit|balance|funds)|add (a )?payment method|low balance|billing/i.test(msg)) {
       return new ProviderError(provider, 'INSUFFICIENT_CREDITS', `${provider}: ${msg}`, status);
+    }
+    if (/invalid (api[-_ ]?key|token|credential)|unauthorized|authentication failed/i.test(msg)) {
+      return new ProviderError(provider, 'AUTH_ERROR', `${provider}: authentication failed — ${msg}`, status);
     }
     return new ProviderError(provider, 'INVALID_REQUEST', `${provider}: ${msg || 'invalid request'}`, status);
   }
@@ -117,11 +95,7 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
     return new ProviderError(provider, 'UNAVAILABLE', `${provider}: unreachable`);
   }
 
-  return new ProviderError(
-    provider,
-    'UNKNOWN',
-    `${provider}: ${(err as Error)?.message ?? 'unknown error'}`
-  );
+  return new ProviderError(provider, 'UNKNOWN', `${provider}: ${(err as Error)?.message ?? 'unknown error'}`);
 }
 
 export function estimateCost(totalTokens: number, pricePer1k: number): number {
@@ -138,13 +112,11 @@ export function createSseFrameParser(onData: (data: string) => void) {
     while (frameEnd !== -1) {
       const frame = buffer.slice(0, frameEnd);
       buffer = buffer.slice(frameEnd + 2);
-
       const data = frame
         .split('\n')
         .filter((line) => line.startsWith('data:'))
         .map((line) => line.slice(5).replace(/^ /, ''))
         .join('\n');
-
       if (data) onData(data);
       frameEnd = buffer.indexOf('\n\n');
     }
