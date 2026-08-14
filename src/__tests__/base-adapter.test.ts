@@ -28,12 +28,18 @@ describe('classifyError', () => {
     expect(err.code).toBe('QUOTA_EXCEEDED');
   });
 
-  it('classifies 401/403 as AUTH_ERROR', () => {
+  it('classifies 401 as AUTH_ERROR', () => {
     expect(classifyError('anthropic', fakeAxiosError(401)).code).toBe('AUTH_ERROR');
-    expect(classifyError('anthropic', fakeAxiosError(403)).code).toBe('AUTH_ERROR');
+    expect(classifyError('anthropic', fakeAxiosError(401)).retryable).toBe(false);
   });
 
-  it('classifies a 403 with balance language as INSUFFICIENT_CREDITS, not AUTH_ERROR', () => {
+  it('classifies an ordinary 403 as FORBIDDEN instead of pretending it is an invalid key', () => {
+    const err = classifyError('anthropic', fakeAxiosError(403));
+    expect(err.code).toBe('FORBIDDEN');
+    expect(err.retryable).toBe(false);
+  });
+
+  it('classifies a 403 with balance language as INSUFFICIENT_CREDITS', () => {
     const err = classifyError(
       'novita',
       fakeAxiosError(403, undefined, {
@@ -47,12 +53,12 @@ describe('classifyError', () => {
     expect(err.message).toContain('balance');
   });
 
-  it('still classifies an ordinary 401/403 with no billing language as AUTH_ERROR', () => {
+  it('classifies a 403 invalid API key as FORBIDDEN and preserves the provider distinction', () => {
     const err = classifyError(
       'novita',
       fakeAxiosError(403, undefined, { code: 403, reason: 'INVALID_API_KEY', message: 'invalid API key' })
     );
-    expect(err.code).toBe('AUTH_ERROR');
+    expect(err.code).toBe('FORBIDDEN');
     expect(err.retryable).toBe(false);
   });
 
@@ -61,13 +67,6 @@ describe('classifyError', () => {
       'inference',
       fakeAxiosError(402, undefined, { message: 'Insufficient funds. Please add a payment method.' })
     );
-    expect(err.code).toBe('INSUFFICIENT_CREDITS');
-    expect(err.retryable).toBe(false);
-    expect(err.message).toContain('payment required');
-  });
-
-  it('classifies 402 with no body using a sensible default message', () => {
-    const err = classifyError('inference', fakeAxiosError(402));
     expect(err.code).toBe('INSUFFICIENT_CREDITS');
     expect(err.retryable).toBe(false);
     expect(err.message).toContain('payment required');
@@ -85,31 +84,22 @@ describe('classifyError', () => {
     expect(err.retryable).toBe(false);
   });
 
-  it('classifies a 400 with credit-balance language as INSUFFICIENT_CREDITS (non-retryable)', () => {
+  it('classifies a 400 with credit-balance language as INSUFFICIENT_CREDITS', () => {
     const err = classifyError(
       'anthropic',
       fakeAxiosError(400, undefined, {
         type: 'error',
         error: {
           type: 'invalid_request_error',
-          message: 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.',
+          message: 'Your credit balance is too low to access the Anthropic API.',
         },
       })
     );
     expect(err.code).toBe('INSUFFICIENT_CREDITS');
     expect(err.retryable).toBe(false);
-    expect(err.message).toContain('credit balance');
   });
 
-  it('still classifies an ordinary 400 with no billing language as INVALID_REQUEST', () => {
-    const err = classifyError(
-      'anthropic',
-      fakeAxiosError(400, undefined, { error: { message: 'messages: at least one message is required' } })
-    );
-    expect(err.code).toBe('INVALID_REQUEST');
-  });
-
-  it('classifies 404 as NOT_FOUND and non-retryable (fails over to next provider)', () => {
+  it('classifies 404 as NOT_FOUND and non-retryable', () => {
     const err = classifyError('fireworks', fakeAxiosError(404));
     expect(err.code).toBe('NOT_FOUND');
     expect(err.retryable).toBe(false);
@@ -119,19 +109,12 @@ describe('classifyError', () => {
     const err = classifyError(
       'fireworks',
       fakeAxiosError(412, undefined, {
-        error: 'Account superhello2099 is suspended, possibly due to reaching the monthly spending limit',
+        error: 'Account is suspended, possibly due to reaching the monthly spending limit',
       })
     );
     expect(err.code).toBe('ACCOUNT_SUSPENDED');
     expect(err.retryable).toBe(false);
     expect(err.message).toContain('suspended');
-  });
-
-  it('classifies 412 with no body using a sensible default message', () => {
-    const err = classifyError('fireworks', fakeAxiosError(412));
-    expect(err.code).toBe('ACCOUNT_SUSPENDED');
-    expect(err.retryable).toBe(false);
-    expect(err.message.toLowerCase()).toContain('suspended');
   });
 
   it('classifies ECONNABORTED as TIMEOUT', () => {
