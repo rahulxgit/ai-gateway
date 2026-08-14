@@ -7,7 +7,10 @@ export class ModelScopeAdapter extends OpenAICompatibleAdapter {
       name: 'modelscope',
       baseUrl: 'https://api-inference.modelscope.cn/v1',
       apiKey: env.modelscopeApiKey,
-      defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
+      // Current Qwen3 family model used by ModelScope's OpenAI-compatible
+      // inference service. The provider account/quota remains the source of
+      // truth for whether the user's token can invoke it.
+      defaultModel: 'Qwen/Qwen3-32B',
       maxOutputTokens: 8192,
     });
   }
