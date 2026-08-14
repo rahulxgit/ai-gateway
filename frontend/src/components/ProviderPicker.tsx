@@ -13,6 +13,7 @@ const STATUS_DOT: Record<ProviderHealth['status'], string> = {
   model_unavailable: 'bg-danger',
   account_suspended: 'bg-danger',
   unavailable: 'bg-danger',
+  paid_only: 'bg-ink-faint',
   down: 'bg-danger',
   unknown: 'bg-ink-faint',
 };
@@ -27,6 +28,7 @@ const STATUS_LABEL: Record<ProviderHealth['status'], string> = {
   model_unavailable: 'Model unavailable',
   account_suspended: 'Account suspended',
   unavailable: 'Unavailable',
+  paid_only: 'Paid only',
   down: 'Down',
   unknown: 'Checking',
 };
@@ -35,12 +37,6 @@ function shouldPulse(status: ProviderHealth['status']): boolean {
   return status === 'degraded' || status === 'rate_limited' || status === 'quota_exhausted';
 }
 
-/**
- * Searchable provider combobox. A plain <select> stopped scaling once the
- * gateway grew to 21 providers — this replaces it with a filterable list
- * that surfaces live health status and free/paid tier inline, so picking a
- * provider is a glance instead of scrolling a long native dropdown.
- */
 export function ProviderPicker({
   value,
   onChange,
@@ -135,10 +131,7 @@ export function ProviderPicker({
       </button>
 
       {open && (
-        <div
-          role="listbox"
-          className="absolute left-0 top-full z-30 mt-1 w-72 max-w-[90vw] overflow-hidden rounded-md border border-hairline bg-panel shadow-lg"
-        >
+        <div role="listbox" className="absolute left-0 top-full z-30 mt-1 w-80 max-w-[90vw] overflow-hidden rounded-md border border-hairline bg-panel shadow-lg">
           <div className="border-b border-hairline p-1.5">
             <input
               ref={inputRef}
@@ -159,7 +152,7 @@ export function ProviderPicker({
                 value === 'auto' ? 'text-signal' : 'text-ink-muted'
               }`}
             >
-              <span>auto (task-based routing)</span>
+              <span>auto (free-tier routing)</span>
               {value === 'auto' && <span>✓</span>}
             </button>
             {filtered.length === 0 && (
@@ -167,7 +160,8 @@ export function ProviderPicker({
             )}
             {filtered.map((p) => {
               const meta = PROVIDER_META[p];
-              const status = healthByProvider.get(p)?.status ?? 'unknown';
+              const healthState = healthByProvider.get(p);
+              const status = healthState?.status ?? 'unknown';
               return (
                 <button
                   key={p}
@@ -176,17 +170,22 @@ export function ProviderPicker({
                     onChange(p);
                     setOpen(false);
                   }}
-                  className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] transition hover:bg-panel-raised ${
+                  className={`flex w-full items-start gap-2 px-2.5 py-1.5 text-left text-[12px] transition hover:bg-panel-raised ${
                     value === p ? 'text-signal' : 'text-ink'
                   }`}
                 >
                   <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[status]} ${
+                    className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[status]} ${
                       shouldPulse(status) ? 'animate-pulse-dot' : ''
                     }`}
                   />
-                  <span className="flex-1 truncate">{meta.label}</span>
-                  <span className="shrink-0 text-[9px] text-ink-faint">{STATUS_LABEL[status]}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{meta.label}</span>
+                    <span className="block text-[9px] text-ink-faint">
+                      {STATUS_LABEL[status]}
+                      {healthState?.statusMessage ? ` · ${healthState.statusMessage}` : ''}
+                    </span>
+                  </span>
                   {meta.free && (
                     <span className="shrink-0 rounded border border-ok-dim bg-ok-dim/10 px-1 py-0.5 text-[9px] uppercase tracking-wide text-ok">
                       free
