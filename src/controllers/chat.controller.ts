@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { orchestrateChat, orchestrateChatStream } from '../services/orchestrator.service';
-import { getHealthSnapshot } from '../services/health.service';
+import { getHealthSnapshot, refreshProviderHealth } from '../services/health.service';
 import { listConfiguredProviders, listAllProviders } from '../providers/registry';
 import { validateConfiguredModels } from '../services/model-validation.service';
 import { logger } from '../utils/logger';
@@ -37,12 +37,21 @@ export function getProviders(_req: Request, res: Response) {
 }
 
 export function getHealth(_req: Request, res: Response) {
-  res.json({ status: 'ok', providers: getHealthSnapshot() });
+  // Do not block the health request on 20+ provider API calls. The first
+  // response returns the current snapshot immediately, while a single
+  // cached refresh runs in the background and subsequent polls observe the
+  // real results. This works for Vercel/serverless instances as well as a
+  // long-running Node process.
+  void refreshProviderHealth().catch((err) => {
+    logger.warn('Provider health refresh failed', { error: String(err) });
+  });
+
+  res.json({
+    status: 'ok',
+    providers: getHealthSnapshot(),
+  });
 }
 
-// On-demand version of the startup model-deprecation check, so a
-// deprecation can be caught by hitting this endpoint (or a cron/uptime
-// pinger) instead of waiting for the next deploy/restart to notice.
 export async function getModelValidation(_req: Request, res: Response) {
   const results = await validateConfiguredModels();
   res.json({
