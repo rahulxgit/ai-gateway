@@ -13,6 +13,7 @@ const STATUS_COLOR: Record<ProviderHealth['status'], string> = {
   model_unavailable: 'bg-danger',
   account_suspended: 'bg-danger',
   unavailable: 'bg-danger',
+  paid_only: 'bg-ink-faint',
   down: 'bg-danger',
   unknown: 'bg-ink-faint',
 };
@@ -27,6 +28,7 @@ const STATUS_LABEL: Record<ProviderHealth['status'], string> = {
   model_unavailable: 'Model unavailable',
   account_suspended: 'Account suspended',
   unavailable: 'Unavailable',
+  paid_only: 'Paid only',
   down: 'Down',
   unknown: 'Checking',
 };
@@ -41,6 +43,7 @@ const STATUS_ORDER: ProviderHealth['status'][] = [
   'down',
   'rate_limited',
   'degraded',
+  'paid_only',
   'unknown',
   'healthy',
 ];
@@ -85,6 +88,7 @@ export function HealthBar() {
   }, [open]);
 
   const healthyCount = providers.filter((provider) => provider.status === 'healthy').length;
+  const freeConfiguredCount = providers.filter((provider) => provider.status !== 'paid_only' && provider.status !== 'down' && provider.status !== 'unknown' && PROVIDER_META[provider.provider]?.free).length;
   const worstStatus = useMemo(() => {
     for (const status of STATUS_ORDER) {
       if (providers.some((provider) => provider.status === status)) return status;
@@ -114,9 +118,7 @@ export function HealthBar() {
         aria-label="Provider health"
       >
         <span className="relative flex h-2 w-2 items-center justify-center">
-          {(worstStatus === 'rate_limited' ||
-            worstStatus === 'quota_exhausted' ||
-            worstStatus === 'degraded') && (
+          {(worstStatus === 'rate_limited' || worstStatus === 'quota_exhausted' || worstStatus === 'degraded') && (
             <span className="absolute h-2 w-2 animate-ping rounded-full bg-signal/30" />
           )}
           <span className={`relative h-1.5 w-1.5 rounded-full ${STATUS_COLOR[worstStatus]}`} />
@@ -128,16 +130,14 @@ export function HealthBar() {
       </button>
 
       {open && (
-        <div
-          className="absolute right-0 top-full z-40 mt-2 w-[27rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-hairline bg-panel shadow-2xl"
-          role="dialog"
-          aria-label="Provider health details"
-        >
+        <div className="absolute right-0 top-full z-40 mt-2 w-[27rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-hairline bg-panel shadow-2xl" role="dialog" aria-label="Provider health details">
           <div className="border-b border-hairline/80 bg-panel-raised/40 px-3.5 py-3">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-ink">Provider health</p>
-                <p className="mt-0.5 text-[11px] text-ink-faint">Live API probes refresh at most once per minute</p>
+                <p className="mt-0.5 text-[11px] text-ink-faint">
+                  {freeConfiguredCount} free-tier provider(s) eligible for automatic routing
+                </p>
               </div>
               <span className="rounded-full border border-hairline px-2 py-1 font-mono text-[10px] text-ink-faint">
                 {STATUS_LABEL[worstStatus]}
@@ -156,13 +156,9 @@ export function HealthBar() {
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${STATUS_COLOR[provider.status]}`} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="truncate text-xs font-medium text-ink">
-                      {PROVIDER_META[provider.provider]?.label ?? provider.provider}
-                    </span>
+                    <span className="truncate text-xs font-medium text-ink">{PROVIDER_META[provider.provider]?.label ?? provider.provider}</span>
                     <span className="shrink-0 text-[10px] font-medium text-ink-faint">
-                      {provider.status === 'healthy' && provider.avgLatencyMs
-                        ? `${Math.round(provider.avgLatencyMs)}ms`
-                        : STATUS_LABEL[provider.status]}
+                      {provider.status === 'healthy' && provider.avgLatencyMs ? `${Math.round(provider.avgLatencyMs)}ms` : STATUS_LABEL[provider.status]}
                     </span>
                   </div>
                   {(provider.statusMessage || provider.lastError || provider.model) && (
