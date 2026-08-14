@@ -1,15 +1,15 @@
 import { OpenAICompatibleAdapter } from './openai-compatible.adapter';
 import { env } from '../config/env';
 
-// Baseten's "Model APIs" product exposes hosted open models behind an
-// OpenAI-compatible endpoint, separate from its custom-deployment endpoints.
 export class BasetenAdapter extends OpenAICompatibleAdapter {
   constructor() {
     super({
       name: 'baseten',
       baseUrl: 'https://inference.baseten.co/v1',
       apiKey: env.basetenApiKey,
-      defaultModel: 'meta-llama/Llama-3.3-70B-Instruct',
+      // Current Baseten Model APIs example model. Baseten remains paid/trial
+      // and is intentionally excluded from automatic free routing.
+      defaultModel: 'deepseek-ai/DeepSeek-V4-Pro',
       maxOutputTokens: 8192,
     });
   }
