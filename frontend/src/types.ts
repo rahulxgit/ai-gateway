@@ -43,10 +43,6 @@ export interface ChatMessage {
   failoverChain?: ProviderName[];
   createdAt?: string;
   images?: ImageAttachment[];
-  // Names of text-extracted files (PDF/DOCX/txt) attached to this message,
-  // for display purposes only — the extracted text itself lives inside
-  // `content` (sent to the model) but is never shown raw in the UI, same
-  // as how Claude.ai/ChatGPT show a clean file chip instead of a text dump.
   attachmentNames?: string[];
 }
 
@@ -61,11 +57,27 @@ export interface ChatResult {
   latencyMs: number;
 }
 
+export type ProviderHealthStatus =
+  | 'healthy'
+  | 'degraded'
+  | 'rate_limited'
+  | 'quota_exhausted'
+  | 'authentication_failed'
+  | 'forbidden'
+  | 'model_unavailable'
+  | 'account_suspended'
+  | 'unavailable'
+  | 'down'
+  | 'unknown';
+
 export interface ProviderHealth {
   provider: ProviderName;
-  status: 'healthy' | 'degraded' | 'rate_limited' | 'down' | 'unknown';
+  status: ProviderHealthStatus;
   lastCheckedAt: string;
   lastError?: string;
+  errorCode?: string;
+  statusMessage?: string;
+  model?: string;
   avgLatencyMs?: number;
   consecutiveFailures: number;
 }
@@ -131,11 +143,6 @@ export const TASK_TYPES: { value: TaskType; label: string }[] = [
   { value: 'large-context', label: 'Large context' },
 ];
 
-// Light metadata for the provider picker UI only — never sent to the
-// backend, purely to make 21 providers scannable/searchable instead of a
-// flat alphabetical list. "free" here means a genuinely free tier or free
-// trial credits exist; it does not guarantee $0 for every model a provider
-// hosts.
 export interface ProviderMeta {
   label: string;
   free: boolean;
@@ -190,10 +197,6 @@ export interface UploadResult {
   savedToProject: boolean;
 }
 
-// Known-good ":free"-suffixed OpenRouter models — zero cost against an
-// OpenRouter key you already have, no separate billing with DeepSeek or
-// Moonshot required. Curated rather than fetched live since OpenRouter's
-// free catalog changes; update this list if a model gets deprecated.
 export const OPENROUTER_FREE_MODELS: { value: string; label: string }[] = [
   { value: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek Chat V3.1 (free)' },
   { value: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (free, reasoning)' },
