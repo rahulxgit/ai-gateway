@@ -1,83 +1,77 @@
 import { ProviderName, TaskType } from '../types';
 
-// Default failover order used when no task type is given or a task's
-// preferred providers are all unavailable. Order chosen for a mix of
-// quality + reliability + generous free tiers.
-export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
+// Providers whose documented/free-tier access can be used by automatic routing.
+// Paid-only or trial-credit providers remain available through forceProvider but
+// are never selected automatically, so the gateway cannot unexpectedly spend money.
+export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'gemini',
-  'anthropic',
-  'deepseek',
-  'cerebras',
   'groq',
-  'mistral',
-  'kimi',
-  'together',
   'openrouter',
-  'openai',
   'huggingface',
-  // Newly added free/free-tier providers. Appended at the end of the
-  // default chain (rather than interleaved) so existing routing behavior
-  // and task preferences for all previously-supported providers are
-  // completely unchanged; these only get tried after the original list.
-  'nebius',
-  'fireworks',
-  'sambanova',
-  'novita',
-  'nvidia',
+  'cerebras',
+  'mistral',
   'cloudflare',
-  'aimlapi',
-  'baseten',
+  'nvidia',
+  'sambanova',
   'modelscope',
-  'inference',
 ];
 
-// Task-based routing preferences. The router tries these providers first,
-// in order, before falling back to DEFAULT_FAILOVER_ORDER for anything not
-// already tried.
+export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
+  'gemini',
+  'openrouter',
+  'groq',
+  'cerebras',
+  'mistral',
+  'cloudflare',
+  'nvidia',
+  'huggingface',
+  'sambanova',
+  'modelscope',
+  // Paid/trial providers stay after the free pool for explicit/manual use.
+  'deepseek',
+  'together',
+  'anthropic',
+  'kimi',
+  'fireworks',
+  'inference',
+  'nebius',
+  'novita',
+  'baseten',
+  'aimlapi',
+  'openai',
+];
+
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
-  // DeepSeek and Kimi both benchmark very strongly on SWE-bench-style coding
-  // tasks at a fraction of the cost of Anthropic/OpenAI; Mistral's Codestral
-  // is purpose-built for code too, so it joins the front of this chain.
-  coding: ['deepseek', 'anthropic', 'mistral', 'kimi', 'gemini', 'openai', 'openrouter'],
-  reasoning: ['deepseek', 'anthropic', 'openai', 'gemini'],
-  creative: ['gemini', 'openai', 'anthropic'],
-  // Cerebras runs on wafer-scale inference hardware and is dramatically
-  // faster than typical GPU-based providers — leads the fast lane alongside
-  // Groq, which is the other speed-optimized provider here.
-  fast: ['cerebras', 'groq', 'together', 'gemini'],
-  cheap: ['deepseek', 'cerebras', 'together', 'groq', 'openrouter', 'huggingface'],
-  // Kimi's 256K context window is the largest in this gateway, so it leads
-  // for tasks that need to hold a lot of material at once.
-  'large-context': ['kimi', 'gemini', 'anthropic', 'openai'],
-  general: DEFAULT_FAILOVER_ORDER,
+  coding: ['groq', 'openrouter', 'deepseek', 'mistral', 'gemini'],
+  reasoning: ['openrouter', 'groq', 'gemini', 'cerebras'],
+  creative: ['gemini', 'openrouter', 'mistral'],
+  fast: ['groq', 'cerebras', 'gemini', 'openrouter'],
+  cheap: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral'],
+  'large-context': ['openrouter', 'gemini', 'huggingface', 'mistral'],
+  general: DEFAULT_FAILOVER_ORDER.filter((provider) => FREE_AUTO_PROVIDERS.includes(provider)),
 };
 
-// Rough per-1K-token USD pricing for cost estimation/analytics. Approximate,
-// blended prompt+completion figures — meant for relative cost tracking, not
-// billing-grade accuracy. Update as providers change pricing.
 export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
-  gemini: 0.0009, // gemini-3.1-flash-lite: ~$0.25/$1.50 per 1M, blended estimate
-  anthropic: 0.003, // claude-haiku-4-5: cheapest current Claude tier
-  openai: 0.0002, // gpt-5-nano: $0.05/$0.40 per 1M, blended estimate
-  groq: 0.0002,
+  gemini: 0,
+  anthropic: 0.003,
+  openai: 0.0002,
+  groq: 0,
   together: 0.0002,
-  openrouter: 0.001,
-  huggingface: 0.0001,
-  deepseek: 0.00021, // v4-flash: $0.14/$0.28 per 1M blended
+  openrouter: 0,
+  huggingface: 0,
+  deepseek: 0.00021,
   kimi: 0.0018,
-  cerebras: 0.0001,
-  mistral: 0.0004,
-  // New free/free-tier providers below — approximate blended figures for
-  // their listed free-tier default models, for relative cost tracking only.
-  cloudflare: 0.0, // Workers AI free daily neuron allocation
+  cerebras: 0,
+  mistral: 0,
+  cloudflare: 0,
   fireworks: 0.0002,
   inference: 0.0001,
   nebius: 0.0002,
-  sambanova: 0.0001,
-  nvidia: 0.0002,
+  sambanova: 0,
+  nvidia: 0,
   novita: 0.0002,
   baseten: 0.0002,
-  modelscope: 0.0001,
+  modelscope: 0,
   aimlapi: 0.0002,
 };
 
@@ -86,13 +80,14 @@ export function buildProviderOrder(
   forceProvider: ProviderName | undefined
 ): ProviderName[] {
   if (forceProvider) {
-    // User forced a provider — try it first, then fall back to the rest of
-    // the default chain in case the forced provider is down.
     const rest = DEFAULT_FAILOVER_ORDER.filter((p) => p !== forceProvider);
     return [forceProvider, ...rest];
   }
 
-  const preferred = TASK_ROUTING[taskType ?? 'general'];
-  const rest = DEFAULT_FAILOVER_ORDER.filter((p) => !preferred.includes(p));
+  const preferred = (TASK_ROUTING[taskType ?? 'general'] ?? TASK_ROUTING.general)
+    .filter((p) => FREE_AUTO_PROVIDERS.includes(p));
+  const rest = DEFAULT_FAILOVER_ORDER.filter(
+    (p) => FREE_AUTO_PROVIDERS.includes(p) && !preferred.includes(p)
+  );
   return [...preferred, ...rest];
 }
