@@ -34,31 +34,22 @@ function systemInstruction(messages: ChatMessage[]) {
 
 export class GeminiAdapter implements ProviderAdapter {
   readonly name = 'gemini' as const;
-  // gemini-2.0-flash was deprecated and shut down March 2026. Originally
-  // defaulted to 2.5 Flash-Lite; switched again to 3.1 Flash-Lite
-  // (2026-08-07) after repeated free-tier rate-limit hits within only a
-  // few chat turns. 3.1 Flash-Lite is GA/no-billing-required on the free
-  // tier and reports roughly double the RPM headroom of 2.5 Flash-Lite.
-  // Deliberately NOT jumping to the newer 3.5 Flash-Lite / 3.6 Flash
-  // generation yet: Google's own migration docs say those deprecate
-  // temperature/top_p/top_k and push toward a new /interactions endpoint,
-  // which this adapter's generateContent + generationConfig shape doesn't
-  // speak — that upgrade needs its own adapter rewrite, not a one-line
-  // model swap. If free-tier rate limits are still an issue after this
-  // change, the router already fails over to the next configured provider
-  // (visible as the "failover" chain in responses) rather than erroring
-  // out, so a single provider's limit isn't a hard outage.
-  readonly defaultModel = 'gemini-3.1-flash-lite';
+  // Free-tier default: Gemini 2.5 Flash-Lite is explicitly listed by Google
+  // with free-of-charge input/output pricing. Keep the request shape on the
+  // stable generateContent API used by this adapter.
+  readonly defaultModel = 'gemini-2.5-flash-lite';
   readonly supportsVision = true;
-  // Verified against Google's docs for the 2.5/3.x Flash generations,
-  // which have consistently supported up to 65,536 output tokens; not
-  // independently re-verified for 3.1 Flash-Lite specifically at time of
-  // this switch — if requests start truncating, check Google's current
-  // docs for this exact model ID first.
   readonly maxOutputTokens = 65536;
 
   isConfigured(): boolean {
     return Boolean(env.geminiApiKey);
+  }
+
+  private headers() {
+    return {
+      'x-goog-api-key': env.geminiApiKey,
+      'Content-Type': 'application/json',
+    };
   }
 
   async chat(options: ProviderAdapterOptions): Promise<ProviderResponse> {
@@ -67,16 +58,16 @@ export class GeminiAdapter implements ProviderAdapter {
 
     try {
       const { data } = await axios.post(
-        `${BASE_URL}/${model}:generateContent?key=${env.geminiApiKey}`,
+        `${BASE_URL}/${model}:generateContent`,
         {
           contents: toGeminiContents(options.messages),
           systemInstruction: systemInstruction(options.messages),
           generationConfig: {
             temperature: options.temperature ?? 0.7,
-            maxOutputTokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
+            maxOutputTokens: Math.min(options.maxTokens ?? 1024, this.maxOutputTokens),
           },
         },
-        { timeout: env.requestTimeoutMs }
+        { headers: this.headers(), timeout: env.requestTimeoutMs }
       );
 
       const content = data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('') ?? '';
@@ -111,16 +102,16 @@ export class GeminiAdapter implements ProviderAdapter {
 
     try {
       const response = await axios.post(
-        `${BASE_URL}/${model}:streamGenerateContent?alt=sse&key=${env.geminiApiKey}`,
+        `${BASE_URL}/${model}:streamGenerateContent?alt=sse`,
         {
           contents: toGeminiContents(options.messages),
           systemInstruction: systemInstruction(options.messages),
           generationConfig: {
             temperature: options.temperature ?? 0.7,
-            maxOutputTokens: Math.min(options.maxTokens ?? this.maxOutputTokens, this.maxOutputTokens),
+            maxOutputTokens: Math.min(options.maxTokens ?? 1024, this.maxOutputTokens),
           },
         },
-        { timeout: env.requestTimeoutMs, responseType: 'stream' }
+        { headers: this.headers(), timeout: env.requestTimeoutMs, responseType: 'stream' }
       );
 
       await new Promise<void>((resolve, reject) => {
@@ -167,7 +158,8 @@ export class GeminiAdapter implements ProviderAdapter {
     }
 
     try {
-      const { data } = await axios.get(`${BASE_URL}?key=${env.geminiApiKey}`, {
+      const { data } = await axios.get(BASE_URL, {
+        headers: this.headers(),
         timeout: env.requestTimeoutMs,
       });
       const models: unknown = data?.models;
