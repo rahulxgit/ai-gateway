@@ -36,15 +36,16 @@ export function getProviders(_req: Request, res: Response) {
   });
 }
 
-export function getHealth(_req: Request, res: Response) {
-  // Do not block the health request on 20+ provider API calls. The first
-  // response returns the current snapshot immediately, while a single
-  // cached refresh runs in the background and subsequent polls observe the
-  // real results. This works for Vercel/serverless instances as well as a
-  // long-running Node process.
-  void refreshProviderHealth().catch((err) => {
+export async function getHealth(_req: Request, res: Response) {
+  // Vercel/serverless instances may stop execution after the response is
+  // sent, so the live probe must be awaited rather than fire-and-forget.
+  // refreshProviderHealth() caches the result for two minutes and shares a
+  // single in-flight refresh across concurrent dashboard polls.
+  try {
+    await refreshProviderHealth();
+  } catch (err) {
     logger.warn('Provider health refresh failed', { error: String(err) });
-  });
+  }
 
   res.json({
     status: 'ok',
