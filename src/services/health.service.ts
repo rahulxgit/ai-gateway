@@ -1,5 +1,12 @@
-import { ProviderError, ProviderErrorCode, ProviderHealth, ProviderHealthStatus, ProviderName } from '../types';
+import {
+  ProviderError,
+  ProviderErrorCode,
+  ProviderHealth,
+  ProviderHealthStatus,
+  ProviderName,
+} from '../types';
 import { providerRegistry } from '../providers/registry';
+import { FREE_AUTO_PROVIDERS } from '../config/routing';
 import { logger } from '../utils/logger';
 
 const LATENCY_WINDOW = 20;
@@ -32,33 +39,21 @@ let refreshInFlight: Promise<void> | null = null;
 
 function statusFromErrorCode(code: ProviderErrorCode): ProviderHealthStatus {
   switch (code) {
-    case 'AUTH_ERROR':
-      return 'authentication_failed';
-    case 'FORBIDDEN':
-      return 'forbidden';
-    case 'RATE_LIMITED':
-      return 'rate_limited';
+    case 'AUTH_ERROR': return 'authentication_failed';
+    case 'FORBIDDEN': return 'forbidden';
+    case 'RATE_LIMITED': return 'rate_limited';
     case 'QUOTA_EXCEEDED':
-    case 'INSUFFICIENT_CREDITS':
-      return 'quota_exhausted';
-    case 'NOT_FOUND':
-      return 'model_unavailable';
-    case 'ACCOUNT_SUSPENDED':
-      return 'account_suspended';
+    case 'INSUFFICIENT_CREDITS': return 'quota_exhausted';
+    case 'NOT_FOUND': return 'model_unavailable';
+    case 'ACCOUNT_SUSPENDED': return 'account_suspended';
     case 'TIMEOUT':
-    case 'UNAVAILABLE':
-      return 'unavailable';
-    default:
-      return 'degraded';
+    case 'UNAVAILABLE': return 'unavailable';
+    default: return 'degraded';
   }
 }
 
 function timeoutError(provider: ProviderName): ProviderError {
-  return new ProviderError(
-    provider,
-    'TIMEOUT',
-    `${provider}: health probe exceeded ${HEALTH_PROBE_TIMEOUT_MS}ms`
-  );
+  return new ProviderError(provider, 'TIMEOUT', `${provider}: health probe exceeded ${HEALTH_PROBE_TIMEOUT_MS}ms`);
 }
 
 async function withProbeTimeout<T>(provider: ProviderName, work: Promise<T>): Promise<T> {
@@ -75,36 +70,33 @@ async function withProbeTimeout<T>(provider: ProviderName, work: Promise<T>): Pr
   }
 }
 
-export function recordSuccess(provider: ProviderName, latencyMs: number, correlationId?: string): void {
+function recordSuccess(provider: ProviderName, latencyMs: number, correlationId?: string): void {
   const s = state[provider];
   s.consecutiveFailures = 0;
   s.lastCheckedAt = new Date().toISOString();
   s.lastError = undefined;
   s.errorCode = undefined;
-  s.statusMessage = latencyMs > DEGRADED_LATENCY_MS ? 'Working but slow' : 'API reachable and inference succeeded';
+  s.statusMessage = latencyMs > DEGRADED_LATENCY_MS
+    ? 'Working but slow'
+    : 'API reachable and inference succeeded';
   s.recentLatencies.push(latencyMs);
   if (s.recentLatencies.length > LATENCY_WINDOW) s.recentLatencies.shift();
-  s.avgLatencyMs = Math.round(
-    s.recentLatencies.reduce((a, b) => a + b, 0) / s.recentLatencies.length
-  );
+  s.avgLatencyMs = Math.round(s.recentLatencies.reduce((a, b) => a + b, 0) / s.recentLatencies.length);
   s.status = s.avgLatencyMs > DEGRADED_LATENCY_MS ? 'degraded' : 'healthy';
   logger.debug('Provider health recorded success', { correlationId, provider, latencyMs, status: s.status });
 }
 
-export function recordFailure(
-  provider: ProviderName,
-  errorCode: string,
-  message: string,
-  correlationId?: string
-): void {
+function recordFailure(provider: ProviderName, errorCode: ProviderErrorCode, message: string): void {
   const s = state[provider];
   s.consecutiveFailures += 1;
   s.lastCheckedAt = new Date().toISOString();
   s.lastError = message;
-  s.errorCode = errorCode as ProviderErrorCode;
-  const classifiedStatus = statusFromErrorCode(errorCode as ProviderErrorCode);
+  s.errorCode = errorCode;
+  const classifiedStatus = statusFromErrorCode(errorCode);
 
-  if (['AUTH_ERROR', 'FORBIDDEN', 'RATE_LIMITED', 'QUOTA_EXCEEDED', 'INSUFFICIENT_CREDITS', 'NOT_FOUND', 'ACCOUNT_SUSPENDED'].includes(errorCode)) {
+  if (
+    ['AUTH_ERROR', 'FORBIDDEN', 'RATE_LIMITED', 'QUOTA_EXCEEDED', 'INSUFFICIENT_CREDITS', 'NOT_FOUND', 'ACCOUNT_SUSPENDED'].includes(errorCode)
+  ) {
     s.status = classifiedStatus;
   } else if (s.consecutiveFailures >= DOWN_AFTER_FAILURES) {
     s.status = 'down';
@@ -113,13 +105,24 @@ export function recordFailure(
   }
 
   s.statusMessage = message;
-  logger.warn('Provider health recorded failure', {
-    correlationId,
-    provider,
-    errorCode,
-    status: s.status,
-    consecutiveFailures: s.consecutiveFailures,
-  });
+}
+
+function errorFromCatalogDetail(provider: ProviderName, detail?: string): ProviderError | null {
+  const message = detail ?? '';
+  if (!message) return null;
+  if (/\b401\b|invalid (api[-_ ]?key|token|credential)|unauthorized|authentication failed|not authenticated/i.test(message)) {
+    return new ProviderError(provider, 'AUTH_ERROR', `${provider}: ${message}`, 401);
+  }
+  if (/\b403\b|forbidden|access denied|cloudflare/i.test(message)) {
+    return new ProviderError(provider, 'FORBIDDEN', `${provider}: ${message}`, 403);
+  }
+  if (/\b429\b|rate.?limit|quota|too many requests/i.test(message)) {
+    return new ProviderError(provider, 'RATE_LIMITED', `${provider}: ${message}`, 429);
+  }
+  if (/\b5\d\d\b|timeout|network error|unreachable/i.test(message)) {
+    return new ProviderError(provider, 'UNAVAILABLE', `${provider}: ${message}`);
+  }
+  return null;
 }
 
 function recordProbeFailure(provider: ProviderName, err: unknown): void {
@@ -129,23 +132,8 @@ function recordProbeFailure(provider: ProviderName, err: unknown): void {
   recordFailure(provider, pErr.code, pErr.message);
 }
 
-async function probeProvider(provider: ProviderName): Promise<void> {
+async function probeFreeProvider(provider: ProviderName): Promise<void> {
   const adapter = providerRegistry[provider];
-
-  if (!adapter.isConfigured()) {
-    const s = state[provider];
-    s.status = 'down';
-    s.lastCheckedAt = new Date().toISOString();
-    s.lastError = undefined;
-    s.errorCode = undefined;
-    s.statusMessage = 'API key not configured';
-    return;
-  }
-
-  // The real chat call is deliberately the source of truth. A model-list
-  // endpoint can authenticate successfully while inference is still blocked
-  // by billing/quota, model entitlement, account state, or provider policy.
-  // A one-token request exercises the same path the gateway actually uses.
   const startedAt = Date.now();
   try {
     const response = await withProbeTimeout(
@@ -161,6 +149,72 @@ async function probeProvider(provider: ProviderName): Promise<void> {
   } catch (err) {
     recordProbeFailure(provider, err);
   }
+}
+
+async function probePaidProviderCredentials(provider: ProviderName): Promise<void> {
+  const adapter = providerRegistry[provider];
+  if (!adapter.checkModelAvailability) {
+    state[provider].status = 'paid_only';
+    state[provider].lastCheckedAt = new Date().toISOString();
+    state[provider].statusMessage = 'Configured paid provider; excluded from automatic free inference checks.';
+    return;
+  }
+
+  try {
+    const availability = await withProbeTimeout(provider, adapter.checkModelAvailability());
+    state[provider].model = availability.model;
+
+    if (availability.status === 'available') {
+      state[provider].status = 'paid_only';
+      state[provider].lastCheckedAt = new Date().toISOString();
+      state[provider].lastError = undefined;
+      state[provider].errorCode = undefined;
+      state[provider].statusMessage = 'Authentication/model check passed; paid provider excluded from automatic free routing.';
+      state[provider].consecutiveFailures = 0;
+      return;
+    }
+
+    if (availability.status === 'unavailable') {
+      recordFailure(
+        provider,
+        'NOT_FOUND',
+        `${provider}: configured default model "${availability.model}" is unavailable. ${availability.detail ?? ''}`.trim()
+      );
+      return;
+    }
+
+    const classified = errorFromCatalogDetail(provider, availability.detail);
+    if (classified) {
+      recordFailure(provider, classified.code, classified.message);
+      return;
+    }
+
+    state[provider].status = 'paid_only';
+    state[provider].lastCheckedAt = new Date().toISOString();
+    state[provider].statusMessage = 'Paid provider configured; credentials could not be conclusively validated without an inference call.';
+  } catch (err) {
+    recordProbeFailure(provider, err);
+  }
+}
+
+async function probeProvider(provider: ProviderName): Promise<void> {
+  const adapter = providerRegistry[provider];
+  if (!adapter.isConfigured()) {
+    const s = state[provider];
+    s.status = 'down';
+    s.lastCheckedAt = new Date().toISOString();
+    s.lastError = undefined;
+    s.errorCode = undefined;
+    s.statusMessage = 'API key not configured';
+    return;
+  }
+
+  if (FREE_AUTO_PROVIDERS.includes(provider)) {
+    await probeFreeProvider(provider);
+    return;
+  }
+
+  await probePaidProviderCredentials(provider);
 }
 
 export async function refreshProviderHealth(force = false): Promise<void> {
@@ -191,3 +245,5 @@ export function isLikelyHealthy(provider: ProviderName): boolean {
   const s = state[provider];
   return s.status === 'healthy' || s.status === 'degraded' || s.status === 'unknown';
 }
+
+export { recordFailure, recordSuccess };
