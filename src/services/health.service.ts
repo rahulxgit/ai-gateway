@@ -1,10 +1,12 @@
-import { ProviderHealth, ProviderName } from '../types';
+import { ProviderError, ProviderErrorCode, ProviderHealth, ProviderHealthStatus, ProviderName } from '../types';
 import { providerRegistry } from '../providers/registry';
 import { logger } from '../utils/logger';
 
 const LATENCY_WINDOW = 20;
 const DEGRADED_LATENCY_MS = 6000;
 const DOWN_AFTER_FAILURES = 3;
+const HEALTH_REFRESH_TTL_MS = 60_000;
+const HEALTH_PROBE_MAX_TOKENS = 1;
 
 interface HealthState extends ProviderHealth {
   recentLatencies: number[];
@@ -16,18 +18,47 @@ const state: Record<ProviderName, HealthState> = Object.fromEntries(
     {
       provider: name,
       status: providerRegistry[name].isConfigured() ? 'unknown' : 'down',
-      lastCheckedAt: new Date().toISOString(),
+      statusMessage: providerRegistry[name].isConfigured() ? 'Health check pending' : 'API key not configured',
+      lastCheckedAt: new Date(0).toISOString(),
       consecutiveFailures: 0,
       recentLatencies: [],
     },
   ])
 ) as unknown as Record<ProviderName, HealthState>;
 
+let lastRefreshAt = 0;
+let refreshInFlight: Promise<void> | null = null;
+
+function statusFromErrorCode(code: ProviderErrorCode): ProviderHealthStatus {
+  switch (code) {
+    case 'AUTH_ERROR':
+      return 'authentication_failed';
+    case 'FORBIDDEN':
+      return 'forbidden';
+    case 'RATE_LIMITED':
+      return 'rate_limited';
+    case 'QUOTA_EXCEEDED':
+    case 'INSUFFICIENT_CREDITS':
+      return 'quota_exhausted';
+    case 'NOT_FOUND':
+      return 'model_unavailable';
+    case 'ACCOUNT_SUSPENDED':
+      return 'account_suspended';
+    case 'TIMEOUT':
+    case 'UNAVAILABLE':
+      return 'unavailable';
+    default:
+      return 'degraded';
+  }
+}
+
 export function recordSuccess(provider: ProviderName, latencyMs: number, correlationId?: string): void {
   const s = state[provider];
   s.consecutiveFailures = 0;
   s.lastCheckedAt = new Date().toISOString();
   s.lastError = undefined;
+  s.errorCode = undefined;
+  s.statusMessage = latencyMs > DEGRADED_LATENCY_MS ? 'Working but slow' : 'API reachable and inference succeeded';
   s.recentLatencies.push(latencyMs);
   if (s.recentLatencies.length > LATENCY_WINDOW) s.recentLatencies.shift();
   s.avgLatencyMs = Math.round(
@@ -47,20 +78,20 @@ export function recordFailure(
   s.consecutiveFailures += 1;
   s.lastCheckedAt = new Date().toISOString();
   s.lastError = message;
+  s.errorCode = errorCode as ProviderErrorCode;
+  const classifiedStatus = statusFromErrorCode(errorCode as ProviderErrorCode);
 
-  if (errorCode === 'RATE_LIMITED' || errorCode === 'QUOTA_EXCEEDED') {
-    s.status = 'rate_limited';
-  } else if (errorCode === 'ACCOUNT_SUSPENDED' || errorCode === 'INSUFFICIENT_CREDITS') {
-    // Neither billing suspension nor an empty credit balance are transient
-    // blips that a couple of retries would recover from — treat both as
-    // down immediately rather than waiting for DOWN_AFTER_FAILURES
-    // consecutive failures.
-    s.status = 'down';
+  // Permanent credential/billing/model states should be visible immediately.
+  // Transport/provider instability stays degraded until repeated failures.
+  if (['AUTH_ERROR', 'FORBIDDEN', 'RATE_LIMITED', 'QUOTA_EXCEEDED', 'INSUFFICIENT_CREDITS', 'NOT_FOUND', 'ACCOUNT_SUSPENDED'].includes(errorCode)) {
+    s.status = classifiedStatus;
   } else if (s.consecutiveFailures >= DOWN_AFTER_FAILURES) {
     s.status = 'down';
   } else {
-    s.status = 'degraded';
+    s.status = classifiedStatus;
   }
+
+  s.statusMessage = message;
   logger.warn('Provider health recorded failure', {
     correlationId,
     provider,
@@ -68,6 +99,88 @@ export function recordFailure(
     status: s.status,
     consecutiveFailures: s.consecutiveFailures,
   });
+}
+
+function recordProbeFailure(provider: ProviderName, err: unknown): void {
+  const pErr = err instanceof ProviderError
+    ? err
+    : new ProviderError(provider, 'UNKNOWN', `${provider}: ${(err as Error)?.message ?? String(err)}`);
+  recordFailure(provider, pErr.code, pErr.message);
+}
+
+async function probeProvider(provider: ProviderName): Promise<void> {
+  const adapter = providerRegistry[provider];
+
+  if (!adapter.isConfigured()) {
+    const s = state[provider];
+    s.status = 'down';
+    s.lastCheckedAt = new Date().toISOString();
+    s.lastError = undefined;
+    s.errorCode = undefined;
+    s.statusMessage = 'API key not configured';
+    return;
+  }
+
+  // First use the provider's own model catalog when available. This catches
+  // deprecated/unsupported default models without spending inference tokens.
+  if (adapter.checkModelAvailability) {
+    try {
+      const availability = await adapter.checkModelAvailability();
+      state[provider].model = availability.model;
+      if (availability.status === 'unavailable') {
+        recordFailure(
+          provider,
+          'NOT_FOUND',
+          `${provider}: configured default model "${availability.model}" is unavailable. ${availability.detail ?? ''}`.trim()
+        );
+        return;
+      }
+    } catch (err) {
+      // Model discovery is advisory. Continue to the real inference probe so
+      // an unavailable /models endpoint cannot hide a usable provider.
+      logger.debug('Provider model discovery failed; continuing with inference probe', {
+        provider,
+        error: String(err),
+      });
+    }
+  }
+
+  const startedAt = Date.now();
+  try {
+    const response = await adapter.chat({
+      messages: [{ role: 'user', content: 'Reply with OK.' }],
+      temperature: 0,
+      maxTokens: HEALTH_PROBE_MAX_TOKENS,
+    });
+    state[provider].model = response.model;
+    recordSuccess(provider, Date.now() - startedAt);
+  } catch (err) {
+    recordProbeFailure(provider, err);
+  }
+}
+
+export async function refreshProviderHealth(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastRefreshAt < HEALTH_REFRESH_TTL_MS) return;
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const configured = Object.keys(providerRegistry).filter((name) =>
+      providerRegistry[name as ProviderName].isConfigured()
+    ) as ProviderName[];
+    const unconfigured = (Object.keys(providerRegistry) as ProviderName[]).filter((name) => !configured.includes(name));
+
+    // Probe providers concurrently so one slow/dead provider cannot block the
+    // rest of the health refresh. Individual provider adapters retain their
+    // normal timeout configuration.
+    await Promise.all(configured.map((provider) => probeProvider(provider)));
+    for (const provider of unconfigured) await probeProvider(provider);
+    lastRefreshAt = Date.now();
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+
+  return refreshInFlight;
 }
 
 export function getHealthSnapshot(): ProviderHealth[] {
@@ -80,5 +193,5 @@ export function getHealthSnapshot(): ProviderHealth[] {
 
 export function isLikelyHealthy(provider: ProviderName): boolean {
   const s = state[provider];
-  return s.status !== 'down' && s.status !== 'rate_limited';
+  return s.status === 'healthy' || s.status === 'degraded' || s.status === 'unknown';
 }
