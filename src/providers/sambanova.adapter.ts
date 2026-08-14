@@ -7,9 +7,10 @@ export class SambaNovaAdapter extends OpenAICompatibleAdapter {
       name: 'sambanova',
       baseUrl: 'https://api.sambanova.ai/v1',
       apiKey: env.sambanovaApiKey,
-      defaultModel: 'Meta-Llama-3.3-70B-Instruct',
-      // SambaNova's RDU hardware supports up to a 256K context window on
-      // some models; output is conservatively bounded well under that.
+      // Keep a current general model as the default. SambaNova access tier
+      // determines whether the account can invoke it; automatic routing is
+      // limited to providers classified as free-tier in routing.ts.
+      defaultModel: 'DeepSeek-V3.2',
       maxOutputTokens: 8192,
     });
   }
