@@ -92,6 +92,34 @@ Backend: https://ai-gateway-wx35.onrender.com
 | Logging | `src/utils/logger.ts` |
 | SQLite client/schema | `src/database/` |
 
+## Google Gemini / free-tier configuration
+
+The gateway supports Google Gemini through the **Gemini Developer API / Google AI Studio** using Google's documented **OpenAI-compatible Chat Completions endpoint**. Set `GEMINI_API_KEY` from Google AI Studio; no Vertex AI configuration is required for this adapter.
+
+```text
+GEMINI_API_KEY=your_google_gemini_api_key
+```
+
+The default Gemini model is **`gemini-3.1-flash-lite`**. Google lists this GA model in the Gemini API free tier and describes it as optimized for high-volume, lightweight workloads. The gateway therefore prefers it in the general and cheap routing lanes. Google applies free-tier rate limits at the **project level**, measured through RPM, TPM, and RPD; active limits are account/project/model dependent and should be checked in Google AI Studio. The gateway deliberately does not hard-code a universal quota or assume that multiple API keys multiply a project's capacity.
+
+OpenAI-compatible Gemini requests are routed through:
+
+```text
+https://generativelanguage.googleapis.com/v1beta/openai
+```
+
+The shared OpenAI-compatible adapter provides model discovery, streaming, error classification, and automatic failover. This keeps Gemini behavior consistent with the other OpenAI-compatible providers without duplicating transport code.
+
+**Important:** Google's OpenAI compatibility layer is intended for unified Chat Completions-style integrations. Gemini-specific features such as some built-in tools and other native capabilities may require Google's direct Gemini API.
+
+Official documentation:
+
+- Gemini OpenAI compatibility: https://ai.google.dev/gemini-api/docs/openai
+- Gemini pricing: https://ai.google.dev/gemini-api/docs/pricing
+- Gemini rate limits: https://ai.google.dev/gemini-api/docs/rate-limits
+- Gemini models: https://ai.google.dev/gemini-api/docs/models
+- Google AI Studio: https://aistudio.google.com/
+
 ## Supported providers
 
 The current registry contains 21 providers:
@@ -218,7 +246,7 @@ L1 in-process memory
        ↓ miss
 L2 Redis
        ↓ miss / Redis unavailable
-normal SQLite/provider operation
+SQLite/provider operation
 ```
 
 A Redis outage is treated as a cache failure, not an application failure. The application continues using the existing local/database/provider path.

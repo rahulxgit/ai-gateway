@@ -79,12 +79,12 @@ describe('GeminiAdapter.checkModelAvailability', () => {
     env.geminiApiKey = originalApiKey;
   });
 
-  it('reports "available" when the defaultModel is present in Gemini model names', async () => {
+  it('reports "available" when the defaultModel is present in the OpenAI-compatible Gemini model catalog', async () => {
     mockedAxios.get.mockResolvedValue({
       data: {
-        models: [
-          { name: 'models/gemini-3.1-flash-lite' },
-          { name: 'models/gemini-2.5-flash-lite' },
+        data: [
+          { id: 'gemini-3.1-flash-lite' },
+          { id: 'gemini-2.5-flash-lite' },
         ],
       },
     });
@@ -94,11 +94,17 @@ describe('GeminiAdapter.checkModelAvailability', () => {
 
     expect(result.status).toBe('available');
     expect(result.model).toBe(adapter.defaultModel);
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/openai/models',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer test-gemini-key' }),
+      })
+    );
   });
 
   it('reports "unavailable" when Gemini has removed the default model', async () => {
     mockedAxios.get.mockResolvedValue({
-      data: { models: [{ name: 'models/gemini-2.5-flash-lite' }] },
+      data: { data: [{ id: 'gemini-2.5-flash-lite' }] },
     });
     const adapter = new GeminiAdapter();
 

@@ -25,18 +25,12 @@ const DEFAULT_MAX_TOKENS = 1024;
 // Defensive safety net for reasoning models (e.g. Groq's qwen3.6-27b) that
 // leak internal chain-of-thought into the visible content wrapped in
 // <think>...</think> tags. We already ask providers to suppress this via
-// extraBodyParams (e.g. reasoning_format: 'hidden'), but that setting has
-// been reported unreliable in the wild — this is a no-op for any response
-// that never contained the tags in the first place.
+// extraBodyParams (e.g. Groq's reasoning_format: 'hidden'), but this is a
+// no-op for responses that never contained the tags in the first place.
 function stripThinkTags(content: string): string {
   return content.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
 }
 
-// Converts our internal ChatMessage (which carries an optional `images`
-// array) into the OpenAI chat-completions wire format. Messages with no
-// images stay a plain string for maximum compatibility with providers that
-// are stricter about content shape; only image-bearing messages become a
-// content-parts array, per OpenAI's multimodal message spec.
 function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string; content: unknown }> {
   return messages.map((m) => {
     if (!m.images || m.images.length === 0) {
@@ -56,10 +50,10 @@ function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string; conten
 }
 
 /**
- * OpenAI, Groq, Together AI, and OpenRouter all expose an OpenAI-compatible
- * `/chat/completions` endpoint. Rather than duplicating four near-identical
- * adapters, this base class parameterizes over base URL, API key, default
- * model, and any extra headers (e.g. OpenRouter's attribution headers).
+ * OpenAI, Groq, Together AI, OpenRouter, and Google Gemini all expose an
+ * OpenAI-compatible `/chat/completions` endpoint. Rather than duplicating
+ * near-identical adapters, this base class parameterizes over base URL, API
+ * key, default model, and any extra headers/body fields.
  */
 export class OpenAICompatibleAdapter implements ProviderAdapter {
   readonly name: ProviderName;
@@ -69,21 +63,16 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly extraHeaders: Record<string, string>;
-  // Provider-specific request body fields that aren't part of the common
-  // OpenAI-compatible surface (e.g. Groq's reasoning_format). Kept
-  // per-adapter rather than in the shared base logic since other
-  // OpenAI-compatible providers may reject unrecognized fields.
   private readonly extraBodyParams: Record<string, unknown>;
-  // Overrides the global env.requestTimeoutMs for this provider only.
-  // Added after a real, reproducible finding: NVIDIA NIM's free tier can
-  // take 60+ seconds to cold-start meta/llama-3.3-70b-instruct (measured
-  // live: ~61s for a two-word prompt), well past the global 30s default —
-  // every forced request to nvidia was hitting TIMEOUT and failing over
-  // before the model ever finished responding. Bumping the *global*
-  // timeout would be worse: it would slow down real-outage detection for
-  // every other provider too. This lets one slow provider get more
-  // patience without affecting the rest of the failover chain.
   private readonly requestTimeoutMs?: number;
+  // Gemini 3 Flash/Flash-Lite reject the legacy sampling fields. Keep this
+  // opt-out per adapter so the shared OpenAI-compatible surface remains
+  // backward-compatible for providers that still accept temperature.
+  private readonly sendTemperature: boolean;
+  // Some models can be genuinely free-tier priced even when the provider
+  // also supports paid models. Track those IDs explicitly so analytics do
+  // not invent a non-zero charge for the default free model.
+  private readonly freeModels: Set<string>;
 
   constructor(config: {
     name: ProviderName;
@@ -95,22 +84,20 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     maxOutputTokens?: number;
     extraBodyParams?: Record<string, unknown>;
     requestTimeoutMs?: number;
+    sendTemperature?: boolean;
+    freeModels?: string[];
   }) {
     this.name = config.name;
+    this.defaultModel = config.defaultModel;
     this.baseUrl = config.baseUrl;
     this.apiKey = config.apiKey;
-    this.defaultModel = config.defaultModel;
     this.extraHeaders = config.extraHeaders ?? {};
-    // Defaults to false: most of this gateway's OpenAI-compatible providers
-    // (Groq, Together, DeepSeek, Cerebras, Mistral) run text-only default
-    // models here. Only OpenAI's own default model is vision-capable.
     this.supportsVision = config.supportsVision ?? false;
-    // Conservative default for subclasses that don't specify a verified
-    // real ceiling — better to under-ask than to send an invalid
-    // over-limit value that hard-fails instead of failing over cleanly.
     this.maxOutputTokens = config.maxOutputTokens ?? 8192;
     this.extraBodyParams = config.extraBodyParams ?? {};
     this.requestTimeoutMs = config.requestTimeoutMs;
+    this.sendTemperature = config.sendTemperature ?? true;
+    this.freeModels = new Set(config.freeModels ?? []);
   }
 
   isConfigured(): boolean {
@@ -129,6 +116,21 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     };
   }
 
+  private requestBody(options: ProviderAdapterOptions) {
+    return {
+      model: options.model ?? this.defaultModel,
+      messages: toOpenAIMessages(options.messages),
+      ...(this.sendTemperature ? { temperature: options.temperature ?? 0.7 } : {}),
+      max_tokens: Math.min(options.maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
+      ...this.extraBodyParams,
+    };
+  }
+
+  private estimatedCostUsd(model: string, totalTokens: number): number {
+    if (this.freeModels.has(model)) return 0;
+    return estimateCost(totalTokens, PRICING_PER_1K_TOKENS[this.name]);
+  }
+
   async chat(options: ProviderAdapterOptions): Promise<ProviderResponse> {
     const start = Date.now();
     const model = options.model ?? this.defaultModel;
@@ -136,13 +138,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     try {
       const { data } = await axios.post(
         `${this.baseUrl}/chat/completions`,
-        {
-          model,
-          messages: toOpenAIMessages(options.messages),
-          temperature: options.temperature ?? 0.7,
-          max_tokens: Math.min(options.maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
-          ...this.extraBodyParams,
-        },
+        this.requestBody(options),
         { headers: this.headers(), timeout: this.effectiveTimeoutMs() }
       );
 
@@ -159,7 +155,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         content,
         usage,
         latencyMs: Date.now() - start,
-        estimatedCostUsd: estimateCost(usage.totalTokens, PRICING_PER_1K_TOKENS[this.name]),
+        estimatedCostUsd: this.estimatedCostUsd(data.model ?? model, usage.totalTokens),
         finishReason: data.choices?.[0]?.finish_reason,
       };
     } catch (err) {
@@ -180,12 +176,8 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model,
-          messages: toOpenAIMessages(options.messages),
-          temperature: options.temperature ?? 0.7,
-          max_tokens: Math.min(options.maxTokens ?? DEFAULT_MAX_TOKENS, this.maxOutputTokens),
+          ...this.requestBody(options),
           stream: true,
-          ...this.extraBodyParams,
         },
         { headers: this.headers(), timeout: this.effectiveTimeoutMs(), responseType: 'stream' }
       );
@@ -223,19 +215,13 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         content: stripThinkTags(fullText),
         usage,
         latencyMs: Date.now() - start,
-        estimatedCostUsd: estimateCost(usage.totalTokens, PRICING_PER_1K_TOKENS[this.name]),
+        estimatedCostUsd: this.estimatedCostUsd(model, usage.totalTokens),
       };
     } catch (err) {
       throw classifyError(this.name, err);
     }
   }
 
-  // Nearly every OpenAI-compatible provider exposes GET /v1/models listing
-  // every model id currently served. We use that as a lightweight canary:
-  // if our configured defaultModel isn't in the list, it's most likely been
-  // deprecated/renamed provider-side (this is exactly what happened when
-  // Groq pulled llama-4-scout-17b-16e-instruct without the gateway
-  // noticing until a live request 404'd in production).
   async checkModelAvailability(): Promise<ModelAvailabilityResult> {
     if (!this.isConfigured()) {
       return { status: 'undetermined', model: this.defaultModel, detail: 'not configured' };
@@ -262,9 +248,6 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       const detail = axios.isAxiosError(err)
         ? `${err.response?.status ?? 'network error'}: ${err.message}`
         : String(err);
-      // A failed check (auth error, no /models endpoint, timeout, etc.) is
-      // NOT evidence the model is gone — only report undetermined so we
-      // never cry wolf about a deprecation that isn't real.
       return { status: 'undetermined', model: this.defaultModel, detail };
     }
   }
