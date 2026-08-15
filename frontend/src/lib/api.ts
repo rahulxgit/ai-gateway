@@ -62,7 +62,7 @@ export const api = {
       { role: 'system' | 'user' | 'assistant'; content: string; provider: ProviderName | null; model: string | null; createdAt: string }[]
     >(`/sessions/${id}/messages`),
 
-  deleteSession: (id: string) => request<void>(`/session/${id}`, { method: 'DELETE' }),
+  deleteSession: (id: string) => request<void>(`/sessions/${id}`, { method: 'DELETE' }),
 
   listProjects: () => request<ProjectMemory[]>('/projects'),
 
