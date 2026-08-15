@@ -14,7 +14,7 @@ import { recordSuccess, recordFailure, isLikelyHealthy } from './health.service'
 
 export interface RouteResult {
   response: ProviderResponse;
-  failoverChain: ProviderName[]; // providers attempted before success, in order
+  failoverChain: ProviderName[];
 }
 
 export class AllProvidersFailedError extends Error {
@@ -43,37 +43,34 @@ function candidateOrder(request: ChatRequest): ProviderName[] {
     configured.has(p)
   );
 
-  // If any message carries an image, only providers whose default model
-  // actually accepts image input are eligible — sending an image to a
-  // text-only model would silently be dropped or rejected by that
-  // provider's API, which is worse than failing over immediately. Checked
-  // only against already-configured providers so we never call getProvider
-  // on something that was never set up in the first place.
   const eligible = requestHasImages(request)
     ? order.filter((p) => getProvider(p).supportsVision)
     : order;
 
-  // Prefer providers that look healthy right now, but never drop a provider
-  // entirely just because it looked unhealthy a moment ago — keep it as a
-  // last-resort candidate in case it has recovered.
+  // Keep rate-limited/down providers out of the hot path. The routing config
+  // remains the source of truth for ordering, and unhealthy providers can
+  // still be retried after the healthy candidates if everything else fails.
   const healthy = eligible.filter((p) => isLikelyHealthy(p));
   const degraded = eligible.filter((p) => !isLikelyHealthy(p));
   return [...healthy, ...degraded];
 }
 
+function modelForProvider(request: ChatRequest, providerName: ProviderName): string | undefined {
+  return request.forceProvider && providerName === request.forceProvider ? request.model : undefined;
+}
+
 /**
- * Runs a non-streaming chat request through the failover chain: tries each
- * configured provider in priority order, retrying transient errors with
- * backoff, and moving to the next provider on any retryable failure. The
- * entire failover chain shares one wall-clock request budget.
+ * Runs a non-streaming chat request through the free-first failover chain.
+ * Automatic routing never falls through to a paid/credit-dependent provider;
+ * explicit forceProvider remains available for manual provider selection.
  */
 export async function routeChat(request: ChatRequest, correlationId?: string): Promise<RouteResult> {
   const order = candidateOrder(request);
   if (order.length === 0) {
     throw new Error(
       requestHasImages(request)
-        ? 'No vision-capable providers are configured. Set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to send images.'
-        : 'No providers are configured. Set at least one *_API_KEY in .env'
+        ? 'No vision-capable free providers are configured. Set a free-tier provider API key such as GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, CEREBRAS_API_KEY, MISTRAL_API_KEY, or the required Cloudflare credentials.'
+        : 'No free automatic providers are configured. Set at least one free-tier provider API key.'
     );
   }
 
@@ -83,21 +80,11 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
 
   for (const providerName of order) {
     const remainingBudgetMs = deadline - Date.now();
-    if (remainingBudgetMs <= 0) {
-      throw new GatewayRequestBudgetExceededError();
-    }
+    if (remainingBudgetMs <= 0) throw new GatewayRequestBudgetExceededError();
 
     attempted.push(providerName);
     const adapter = getProvider(providerName);
-    // A model override (e.g. an OpenRouter-specific model string like
-    // "deepseek/deepseek-chat-v3.1:free") is only meaningful for the
-    // provider it was intended for — passing it to a different provider
-    // during failover would be an invalid/nonsensical model ID for that
-    // provider's API and cause an immediate, avoidable failure. Only the
-    // explicitly forced provider gets the override; every other provider
-    // in the chain uses its own default model.
-    const modelForThisProvider =
-      request.forceProvider && providerName === request.forceProvider ? request.model : undefined;
+    const model = modelForProvider(request, providerName);
 
     try {
       const response = await retryWithBackoff(
@@ -105,7 +92,7 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
           Promise.race([
             adapter.chat({
               messages: request.messages,
-              model: modelForThisProvider,
+              model,
               temperature: request.temperature,
               maxTokens: request.maxTokens,
             }),
@@ -117,7 +104,6 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
       );
 
       recordSuccess(providerName, response.latencyMs, correlationId);
-
       if (attempted.length > 1) {
         failoverLogger.info('Request succeeded after failover', {
           correlationId,
@@ -125,12 +111,9 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
           chain: attempted,
         });
       }
-
       return { response, failoverChain: attempted };
     } catch (err) {
-      if (err instanceof GatewayRequestBudgetExceededError) {
-        throw err;
-      }
+      if (err instanceof GatewayRequestBudgetExceededError) throw err;
 
       const pErr = err instanceof ProviderError ? err : undefined;
       recordFailure(providerName, pErr?.code ?? 'UNKNOWN', (err as Error).message, correlationId);
@@ -139,24 +122,16 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
       logger.warn('Provider failed, attempting failover', {
         correlationId,
         provider: providerName,
+        errorCode: pErr?.code,
         error: (err as Error).message,
         nextCandidates: order.slice(attempted.length),
       });
-      // loop continues to next provider
     }
   }
 
   throw new AllProvidersFailedError(failures);
 }
 
-/**
- * Streaming variant of routeChat. Because a provider can fail mid-stream
- * (after already emitting tokens to the client), we only allow failover
- * before the first chunk is sent. Once tokens have started flowing, a
- * failure is surfaced to the caller rather than silently restarting output
- * from a different provider, which would look broken to the end user.
- * The entire failover chain shares one wall-clock request budget.
- */
 export async function routeChatStream(
   request: ChatRequest,
   onChunk: (chunk: StreamChunk) => void,
@@ -166,8 +141,8 @@ export async function routeChatStream(
   if (order.length === 0) {
     throw new Error(
       requestHasImages(request)
-        ? 'No vision-capable providers are configured. Set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY to send images.'
-        : 'No providers are configured. Set at least one *_API_KEY in .env'
+        ? 'No vision-capable free providers are configured. Set a free-tier provider API key.'
+        : 'No free automatic providers are configured. Set at least one free-tier provider API key.'
     );
   }
 
@@ -177,23 +152,19 @@ export async function routeChatStream(
 
   for (const providerName of order) {
     const remainingBudgetMs = deadline - Date.now();
-    if (remainingBudgetMs <= 0) {
-      throw new GatewayRequestBudgetExceededError();
-    }
+    if (remainingBudgetMs <= 0) throw new GatewayRequestBudgetExceededError();
 
     attempted.push(providerName);
     const adapter = getProvider(providerName);
+    const model = modelForProvider(request, providerName);
     let emittedAnyChunk = false;
-    // See routeChat for why this is scoped to only the forced provider.
-    const modelForThisProvider =
-      request.forceProvider && providerName === request.forceProvider ? request.model : undefined;
 
     try {
       const response = await Promise.race([
         adapter.chatStream(
           {
             messages: request.messages,
-            model: modelForThisProvider,
+            model,
             temperature: request.temperature,
             maxTokens: request.maxTokens,
           },
@@ -210,23 +181,20 @@ export async function routeChatStream(
       recordSuccess(providerName, response.latencyMs, correlationId);
       return { response, failoverChain: attempted };
     } catch (err) {
-      if (err instanceof GatewayRequestBudgetExceededError) {
-        throw err;
-      }
+      if (err instanceof GatewayRequestBudgetExceededError) throw err;
 
       const pErr = err instanceof ProviderError ? err : undefined;
       recordFailure(providerName, pErr?.code ?? 'UNKNOWN', (err as Error).message, correlationId);
       failures.push({ provider: providerName, error: (err as Error).message });
 
       if (emittedAnyChunk) {
-        // Tokens already reached the client under this provider's name —
-        // don't silently switch mid-stream. Bubble the error up instead.
         throw new AllProvidersFailedError(failures);
       }
 
       logger.warn('Provider failed before streaming began, attempting failover', {
         correlationId,
         provider: providerName,
+        errorCode: pErr?.code,
         error: (err as Error).message,
       });
     }
