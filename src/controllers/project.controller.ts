@@ -39,6 +39,57 @@ export function postArchitectureDecision(req: Request, res: Response) {
   res.json(projectMemory.recordArchitectureDecision(req.params.id, summary));
 }
 
+export function patchCurrentTask(req: Request, res: Response) {
+  const { task } = req.body ?? {};
+  if (!task) { res.status(400).json({ error: 'task is required' }); return; }
+  res.json(projectMemory.setCurrentTask(req.params.id, task));
+}
+
+export function postPendingTasks(req: Request, res: Response) {
+  const { tasks } = req.body ?? {};
+  if (!Array.isArray(tasks) || tasks.length === 0 || !tasks.every((t) => typeof t === 'string')) {
+    res.status(400).json({ error: 'tasks is required and must be a non-empty array of strings' });
+    return;
+  }
+  res.json(projectMemory.addPendingTasks(req.params.id, tasks));
+}
+
+export function postBug(req: Request, res: Response) {
+  const { description } = req.body ?? {};
+  if (!description) { res.status(400).json({ error: 'description is required' }); return; }
+  res.json(projectMemory.recordBug(req.params.id, description));
+}
+
+export function patchBugResolve(req: Request, res: Response) {
+  const { fix } = req.body ?? {};
+  if (!fix) { res.status(400).json({ error: 'fix is required' }); return; }
+  res.json(projectMemory.resolveBug(req.params.id, req.params.bugId, fix));
+}
+
+export function postCommit(req: Request, res: Response) {
+  const { message } = req.body ?? {};
+  if (!message) { res.status(400).json({ error: 'message is required' }); return; }
+  res.json(projectMemory.recordCommit(req.params.id, message));
+}
+
+export function patchConventions(req: Request, res: Response) {
+  const conventions = req.body ?? {};
+  if (typeof conventions !== 'object' || Array.isArray(conventions) || Object.keys(conventions).length === 0) {
+    res.status(400).json({ error: 'a non-empty conventions object is required' });
+    return;
+  }
+  res.json(projectMemory.setConventions(req.params.id, conventions));
+}
+
+export function patchUserPreference(req: Request, res: Response) {
+  const { key, value } = req.body ?? {};
+  if (!key || typeof value !== 'string') {
+    res.status(400).json({ error: 'key and string value are required' });
+    return;
+  }
+  res.json(projectMemory.setUserPreference(req.params.id, key, value));
+}
+
 // -- Workspace / files ---------------------------------------------------
 
 export function putFile(req: Request, res: Response) {

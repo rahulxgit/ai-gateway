@@ -11,6 +11,14 @@ router.patch('/projects/:id', asyncHandler(ctrl.patchProject));
 router.post('/projects/:id/tasks/complete', asyncHandler(ctrl.postTaskComplete));
 router.post('/projects/:id/decisions', asyncHandler(ctrl.postArchitectureDecision));
 
+router.patch('/projects/:id/task', asyncHandler(ctrl.patchCurrentTask));
+router.post('/projects/:id/tasks/pending', asyncHandler(ctrl.postPendingTasks));
+router.post('/projects/:id/bugs', asyncHandler(ctrl.postBug));
+router.patch('/projects/:id/bugs/:bugId/resolve', asyncHandler(ctrl.patchBugResolve));
+router.post('/projects/:id/commits', asyncHandler(ctrl.postCommit));
+router.patch('/projects/:id/conventions', asyncHandler(ctrl.patchConventions));
+router.patch('/projects/:id/preferences', asyncHandler(ctrl.patchUserPreference));
+
 router.put('/projects/:id/files', asyncHandler(ctrl.putFile));
 router.get('/projects/:id/files', asyncHandler(ctrl.getFiles));
 // File path is a wildcard segment (paths contain slashes), so /history and
