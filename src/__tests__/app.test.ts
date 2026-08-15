@@ -172,6 +172,30 @@ describe('404 handler', () => {
   });
 });
 
+describe('DELETE session routes', () => {
+  it('deletes a session via the canonical plural /sessions/:id route', async () => {
+    const createRes = await request(app).post('/sessions').send({ title: 'To delete' });
+    const id = createRes.body.id;
+
+    const deleteRes = await request(app).delete(`/sessions/${id}`);
+    expect(deleteRes.status).toBe(204);
+
+    const listRes = await request(app).get('/sessions');
+    expect(listRes.body.some((s: { id: string }) => s.id === id)).toBe(false);
+  });
+
+  it('still accepts the deprecated singular /session/:id route as an alias', async () => {
+    const createRes = await request(app).post('/sessions').send({ title: 'To delete via legacy route' });
+    const id = createRes.body.id;
+
+    const deleteRes = await request(app).delete(`/session/${id}`);
+    expect(deleteRes.status).toBe(204);
+
+    const listRes = await request(app).get('/sessions');
+    expect(listRes.body.some((s: { id: string }) => s.id === id)).toBe(false);
+  });
+});
+
 describe('POST /uploads', () => {
   const fixturePath = path.join(__dirname, 'fixtures', 'sample.pdf');
 
