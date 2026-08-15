@@ -9,12 +9,8 @@ import { GatewayRequestBudgetExceededError } from '../services/router.service';
 import { DailyCostBudgetExceededError } from '../services/orchestrator.service';
 
 const requestPath = (req: Request): string => `${req.baseUrl}${req.path}`.replace(/\/$/, '') || '/';
-
-const isChatRequest = (req: Request): boolean =>
-  req.method === 'POST' && (requestPath(req) === '/chat' || requestPath(req) === '/chat/stream');
-
-const isGenerousReadRequest = (req: Request): boolean =>
-  req.method === 'GET' && (requestPath(req) === '/health' || requestPath(req) === '/providers');
+const isChatRequest = (req: Request): boolean => req.method === 'POST' && (requestPath(req) === '/chat' || requestPath(req) === '/chat/stream');
+const isGenerousReadRequest = (req: Request): boolean => req.method === 'GET' && (requestPath(req) === '/health' || requestPath(req) === '/providers');
 
 export const apiRateLimiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
@@ -58,9 +54,7 @@ export const chatRequestSchema = z.object({
   sessionId: z.string().uuid().optional(),
   projectId: z.string().uuid().optional(),
   messages: z.array(chatMessageSchema).min(1).max(200),
-  taskType: z
-    .enum(['coding', 'reasoning', 'creative', 'fast', 'cheap', 'large-context', 'general'])
-    .optional(),
+  taskType: z.enum(['coding', 'reasoning', 'creative', 'fast', 'cheap', 'large-context', 'general']).optional(),
   forceProvider: z.enum(PROVIDER_NAMES).optional(),
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
@@ -79,10 +73,7 @@ export function validateBody(schema: z.ZodSchema) {
   return (req: Request, res: Response, next: NextFunction) => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
-      res.status(400).json({
-        error: 'Invalid request body',
-        details: result.error.flatten(),
-      });
+      res.status(400).json({ error: 'Invalid request body', details: result.error.flatten() });
       return;
     }
     req.body = result.data;
@@ -91,18 +82,11 @@ export function validateBody(schema: z.ZodSchema) {
 }
 
 export function sanitizeInput(req: Request, _res: Response, next: NextFunction) {
-  if (typeof req.body === 'object' && req.body !== null) {
-    JSON.stringify(req.body);
-  }
+  if (typeof req.body === 'object' && req.body !== null) JSON.stringify(req.body);
   next();
 }
 
-export function errorHandler(
-  err: unknown,
-  req: Request,
-  res: Response,
-  _next: NextFunction
-) {
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   const message = err instanceof Error ? err.message : 'Unknown error';
   logger.error('Unhandled request error', { correlationId: req.correlationId, path: req.path, error: message });
 
@@ -110,16 +94,17 @@ export function errorHandler(
   if (parserError.type === 'entity.too.large' || parserError.status === 413 || parserError.statusCode === 413) {
     return res.status(413).json({ error: 'Request body too large' });
   }
-  if (err instanceof DailyCostBudgetExceededError) {
-    return res.status(429).json({ error: message });
-  }
-  if (err instanceof GatewayRequestBudgetExceededError) {
-    return res.status(504).json({ error: message });
-  }
-  if (message.includes('All configured providers failed')) {
+  if (err instanceof DailyCostBudgetExceededError) return res.status(429).json({ error: message });
+  if (err instanceof GatewayRequestBudgetExceededError) return res.status(504).json({ error: message });
+  if (message.includes('All configured providers failed') || message.includes('All eligible providers failed')) {
     return res.status(502).json({ error: 'All providers failed', detail: message });
   }
-  if (message.includes('No providers are configured') || message.includes('No vision-capable providers')) {
+  if (
+    message.includes('No providers are configured') ||
+    message.includes('No free automatic providers') ||
+    message.includes('No vision-capable providers') ||
+    message.includes('Forced provider')
+  ) {
     return res.status(503).json({ error: message });
   }
   return res.status(500).json({ error: 'Internal server error', detail: message });
