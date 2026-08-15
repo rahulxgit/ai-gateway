@@ -61,58 +61,32 @@ function modelForProvider(request: ChatRequest, providerName: ProviderName): str
   return request.forceProvider === providerName ? request.model : undefined;
 }
 
-function retryDelayMs(retryNumber: number): number {
-  const jitter = Math.random() * 100;
-  return Math.min(400 * 2 ** (retryNumber - 1) + jitter, 8_000);
-}
+function callWithBudget<T>(fn: () => Promise<T>, deadline: number): Promise<T> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) return Promise.reject(new GatewayRequestBudgetExceededError());
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new GatewayRequestBudgetExceededError());
+    }, remainingMs);
 
-/**
- * Executes one provider request within the gateway's global deadline.
- * Rate-limit/quota errors intentionally bypass same-provider retries because
- * retries can consume scarce free-tier capacity without increasing success.
- */
-async function callWithBudget<T>(
-  fn: () => Promise<T>,
-  deadline: number
-): Promise<T> {
-  for (let retryNumber = 0; ; retryNumber += 1) {
-    const remainingBudgetMs = deadline - Date.now();
-    if (remainingBudgetMs <= 0) throw new GatewayRequestBudgetExceededError();
-
-    try {
-      return await Promise.race([
-        fn(),
-        new Promise<T>((_, reject) => {
-          setTimeout(() => reject(new GatewayRequestBudgetExceededError()), remainingBudgetMs);
-        }),
-      ]);
-    } catch (err) {
-      if (err instanceof GatewayRequestBudgetExceededError) throw err;
-
-      const pErr = err instanceof ProviderError ? err : undefined;
-      const retryable = pErr?.retryable ?? true;
-      const blockedByQuota = pErr?.code === 'RATE_LIMITED' || pErr?.code === 'QUOTA_EXCEEDED';
-
-      if (!retryable || blockedByQuota || retryNumber >= env.maxRetries) throw err;
-
-      const delayMs = retryDelayMs(retryNumber + 1);
-      const afterDelayRemainingMs = deadline - Date.now() - delayMs;
-      if (afterDelayRemainingMs <= 0) throw new GatewayRequestBudgetExceededError();
-
-      logger.warn('Retrying provider within gateway request budget', {
-        provider: pErr?.provider,
-        retryNumber: retryNumber + 1,
-        maxRetries: env.maxRetries,
-        delayMs: Math.round(delayMs),
-        remainingBudgetMs: Math.max(0, Math.round(deadline - Date.now())),
+    fn()
+      .then((value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
       });
-      await sleep(delayMs);
-    }
-  }
+  });
 }
 
 export async function routeChat(request: ChatRequest, correlationId?: string): Promise<RouteResult> {
@@ -120,7 +94,7 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
   if (order.length === 0) {
     throw new Error(
       request.forceProvider
-        ? `Forced provider \"${request.forceProvider}\" is not configured or cannot handle this request.`
+        ? `Forced provider "${request.forceProvider}" is not configured or cannot handle this request.`
         : requestHasImages(request)
           ? 'No vision-capable free providers are currently available.'
           : 'No free automatic providers are currently available.'
@@ -188,7 +162,7 @@ export async function routeChatStream(
   if (order.length === 0) {
     throw new Error(
       request.forceProvider
-        ? `Forced provider \"${request.forceProvider}\" is not configured or cannot handle this request.`
+        ? `Forced provider "${request.forceProvider}" is not configured or cannot handle this request.`
         : requestHasImages(request)
           ? 'No vision-capable free providers are currently available.'
           : 'No free automatic providers are currently available.'
@@ -208,24 +182,22 @@ export async function routeChatStream(
     let emittedAnyChunk = false;
 
     try {
-      const response = await Promise.race([
-        adapter.chatStream(
-          {
-            messages: request.messages,
-            model,
-            temperature: request.temperature,
-            maxTokens: request.maxTokens,
-          },
-          (chunk) => {
-            emittedAnyChunk = emittedAnyChunk || chunk.delta.length > 0;
-            onChunk(chunk);
-          }
-        ),
-        new Promise<ProviderResponse>((_, reject) => {
-          const remainingBudgetMs = deadline - Date.now();
-          setTimeout(() => reject(new GatewayRequestBudgetExceededError()), Math.max(0, remainingBudgetMs));
-        }),
-      ]);
+      const response = await callWithBudget(
+        () =>
+          adapter.chatStream(
+            {
+              messages: request.messages,
+              model,
+              temperature: request.temperature,
+              maxTokens: request.maxTokens,
+            },
+            (chunk) => {
+              emittedAnyChunk = emittedAnyChunk || chunk.delta.length > 0;
+              onChunk(chunk);
+            }
+          ),
+        deadline
+      );
 
       recordSuccess(providerName, response.latencyMs, correlationId);
       return { response, failoverChain: attempted };
