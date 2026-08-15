@@ -1,22 +1,17 @@
 import { ProviderName, TaskType } from '../types';
 
 // Free-first automatic routing. Paid/credit-dependent providers remain
-// available through explicit forceProvider but are not part of automatic
-// failover, so a quota problem in a free provider cannot silently turn into
-// paid inference.
+// available through explicit forceProvider but are never selected by the
+// automatic path.
 export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'gemini',
-  'groq',
   'openrouter',
+  'groq',
   'cerebras',
   'mistral',
   'cloudflare',
 ];
 
-// OpenRouter is placed immediately after the direct high-capacity free
-// providers because openrouter/free dynamically distributes work across its
-// currently available free model pool. This complements, rather than
-// replaces, independent provider quotas.
 export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'gemini',
   'openrouter',
@@ -36,22 +31,39 @@ export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
   general: DEFAULT_FAILOVER_ORDER,
 };
 
-// These values are only used for relative analytics. Automatically routed
-// providers in FREE_AUTO_PROVIDERS must report $0 to make the free-only
-// policy visible in the gateway UI/analytics.
+// Only these exact defaults are guaranteed to be part of the gateway's
+// automatic free pool. OpenRouter's :free suffix is also always $0.
+// Keeping this model-aware prevents a forced paid model from being reported
+// as free merely because its provider has a free default.
+export const FREE_MODEL_IDS: Partial<Record<ProviderName, string[]>> = {
+  gemini: ['gemini-3.1-flash-lite'],
+  openrouter: ['openrouter/free'],
+  groq: ['qwen/qwen3.6-27b'],
+  cerebras: ['gpt-oss-120b'],
+  mistral: ['mistral-small-latest'],
+  cloudflare: ['@cf/meta/llama-3.3-70b-instruct-fp8-fast'],
+};
+
+export function isFreeModel(provider: ProviderName, model: string): boolean {
+  if (model.endsWith(':free')) return true;
+  return FREE_MODEL_IDS[provider]?.includes(model) ?? false;
+}
+
+// Provider-level price estimates remain only for models that are not in the
+// explicit free-model set. They are approximate analytics values, not billing.
 export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
-  gemini: 0.0,
+  gemini: 0.003,
   anthropic: 0.003,
   openai: 0.0002,
-  groq: 0.0,
+  groq: 0.0002,
   together: 0.0002,
-  openrouter: 0.0,
+  openrouter: 0.001,
   huggingface: 0.0001,
   deepseek: 0.00021,
   kimi: 0.0018,
-  cerebras: 0.0,
-  mistral: 0.0,
-  cloudflare: 0.0,
+  cerebras: 0.0001,
+  mistral: 0.0004,
+  cloudflare: 0.0001,
   fireworks: 0.0002,
   inference: 0.0001,
   nebius: 0.0002,
@@ -67,12 +79,9 @@ export function buildProviderOrder(
   taskType: TaskType | undefined,
   forceProvider: ProviderName | undefined
 ): ProviderName[] {
-  if (forceProvider) {
-    const rest = Object.values(TASK_ROUTING)
-      .flat()
-      .filter((p) => p !== forceProvider);
-    return [forceProvider, ...Array.from(new Set(rest))];
-  }
+  // "forceProvider" means exactly one provider. Any failure is surfaced to
+  // the caller rather than silently switching to a different provider.
+  if (forceProvider) return [forceProvider];
 
   const preferred = TASK_ROUTING[taskType ?? 'general'];
   return Array.from(new Set(preferred));
