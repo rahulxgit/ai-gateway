@@ -77,8 +77,22 @@ export function recordFailure(
   });
 }
 
+function restoreAfterCooldown(provider: ProviderName): void {
+  const s = state[provider];
+  if (!s.cooldownUntil || Date.now() < s.cooldownUntil) return;
+
+  s.cooldownUntil = undefined;
+  s.lastCheckedAt = new Date().toISOString();
+  s.status = s.avgLatencyMs && s.avgLatencyMs > DEGRADED_LATENCY_MS ? 'degraded' : 'unknown';
+  logger.debug('Provider cooldown expired; provider is eligible for a health probe', {
+    provider,
+    status: s.status,
+  });
+}
+
 export function getHealthSnapshot(): ProviderHealth[] {
   return (Object.keys(state) as ProviderName[]).map((name) => {
+    restoreAfterCooldown(name);
     const { recentLatencies, cooldownUntil, ...health } = state[name];
     void recentLatencies;
     void cooldownUntil;
@@ -88,11 +102,9 @@ export function getHealthSnapshot(): ProviderHealth[] {
 
 /** Returns whether a provider can participate in the current routing attempt. */
 export function isLikelyHealthy(provider: ProviderName): boolean {
+  restoreAfterCooldown(provider);
   const s = state[provider];
   if (s.status === 'down') return false;
   if (s.cooldownUntil && Date.now() < s.cooldownUntil) return false;
-  // A rate-limited provider becomes eligible again after its cooldown. The
-  // next request will either restore it through recordSuccess or start a new
-  // cooldown if the provider is still limited.
   return true;
 }
