@@ -84,6 +84,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     sendTemperature?: boolean;
   }) {
     this.name = config.name;
+    this.defaultModel = config.defaultModel;
     this.baseUrl = config.baseUrl;
     this.apiKey = config.apiKey;
     this.extraHeaders = config.extraHeaders ?? {};
