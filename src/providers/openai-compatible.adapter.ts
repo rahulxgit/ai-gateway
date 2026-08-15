@@ -9,7 +9,7 @@ import {
   StreamChunk,
 } from '../types';
 import { env } from '../config/env';
-import { PRICING_PER_1K_TOKENS } from '../config/routing';
+import { isFreeModel, PRICING_PER_1K_TOKENS } from '../config/routing';
 import { classifyError, createSseFrameParser, estimateCost } from './base.adapter';
 
 const DEFAULT_MAX_TOKENS = 1024;
@@ -20,9 +20,7 @@ function stripThinkTags(content: string): string {
 
 function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string; content: unknown }> {
   return messages.map((m) => {
-    if (!m.images || m.images.length === 0) {
-      return { role: m.role, content: m.content };
-    }
+    if (!m.images || m.images.length === 0) return { role: m.role, content: m.content };
     return {
       role: m.role,
       content: [
@@ -36,10 +34,7 @@ function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string; conten
   });
 }
 
-/**
- * Shared OpenAI-compatible transport used by OpenAI, Groq, Together AI,
- * OpenRouter, Gemini and other compatible providers.
- */
+/** Shared OpenAI-compatible transport used by multiple provider adapters. */
 export class OpenAICompatibleAdapter implements ProviderAdapter {
   readonly name: ProviderName;
   readonly defaultModel: string;
@@ -105,14 +100,21 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     };
   }
 
-  private estimatedCostUsd(model: string, totalTokens: number): number {
-    if (this.freeModels.has(model) || model.endsWith(':free')) return 0;
+  private isConfiguredFreeModel(model: string): boolean {
+    return this.freeModels.has(model) || isFreeModel(this.name, model);
+  }
+
+  private estimatedCostUsd(model: string, totalTokens: number, requestedModel = model): number {
+    // Dynamic OpenRouter free routing can return the concrete selected model
+    // in the response. Preserve the zero-cost guarantee based on the request
+    // model as well as the returned model.
+    if (this.isConfiguredFreeModel(model) || this.isConfiguredFreeModel(requestedModel)) return 0;
     return estimateCost(totalTokens, PRICING_PER_1K_TOKENS[this.name]);
   }
 
   async chat(options: ProviderAdapterOptions): Promise<ProviderResponse> {
     const start = Date.now();
-    const model = options.model ?? this.defaultModel;
+    const requestedModel = options.model ?? this.defaultModel;
 
     try {
       const { data } = await axios.post(
@@ -121,6 +123,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         { headers: this.headers(), timeout: this.effectiveTimeoutMs() }
       );
 
+      const responseModel = data.model ?? requestedModel;
       const content = stripThinkTags(data.choices?.[0]?.message?.content ?? '');
       const usage = {
         promptTokens: data.usage?.prompt_tokens ?? 0,
@@ -130,11 +133,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
 
       return {
         provider: this.name,
-        model: data.model ?? model,
+        model: responseModel,
         content,
         usage,
         latencyMs: Date.now() - start,
-        estimatedCostUsd: this.estimatedCostUsd(data.model ?? model, usage.totalTokens),
+        estimatedCostUsd: this.estimatedCostUsd(responseModel, usage.totalTokens, requestedModel),
         finishReason: data.choices?.[0]?.finish_reason,
       };
     } catch (err) {
@@ -147,17 +150,15 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ProviderResponse> {
     const start = Date.now();
-    const model = options.model ?? this.defaultModel;
+    const requestedModel = options.model ?? this.defaultModel;
+    let responseModel = requestedModel;
     let fullText = '';
     const usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
     try {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
-        {
-          ...this.requestBody(options),
-          stream: true,
-        },
+        { ...this.requestBody(options), stream: true },
         { headers: this.headers(), timeout: this.effectiveTimeoutMs(), responseType: 'stream' }
       );
 
@@ -166,10 +167,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           if (payload === '[DONE]') return;
           try {
             const evt = JSON.parse(payload);
+            if (evt.model) responseModel = evt.model;
             const delta = evt.choices?.[0]?.delta?.content ?? '';
             if (delta) {
               fullText += delta;
-              onChunk({ provider: this.name, model, delta, done: false });
+              onChunk({ provider: this.name, model: responseModel, delta, done: false });
             }
             if (evt.usage) {
               usage.promptTokens = evt.usage.prompt_tokens ?? usage.promptTokens;
@@ -186,15 +188,15 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       });
 
       if (!usage.totalTokens) usage.totalTokens = usage.promptTokens + usage.completionTokens;
-      onChunk({ provider: this.name, model, delta: '', done: true, usage });
+      onChunk({ provider: this.name, model: responseModel, delta: '', done: true, usage });
 
       return {
         provider: this.name,
-        model,
+        model: responseModel,
         content: stripThinkTags(fullText),
         usage,
         latencyMs: Date.now() - start,
-        estimatedCostUsd: this.estimatedCostUsd(model, usage.totalTokens),
+        estimatedCostUsd: this.estimatedCostUsd(responseModel, usage.totalTokens, requestedModel),
       };
     } catch (err) {
       throw classifyError(this.name, err);
@@ -206,11 +208,6 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       return { status: 'undetermined', model: this.defaultModel, detail: 'not configured' };
     }
 
-    // OpenRouter's free router is a virtual model. It is intentionally absent
-    // from some provider catalog responses, so validating it by literal ID
-    // would incorrectly mark a healthy adapter as unavailable and trigger
-    // failover. A configured OpenRouter key is enough for catalog validation;
-    // real request failures still flow through normal error classification.
     if (this.defaultModel === 'openrouter/free') {
       return {
         status: 'available',
