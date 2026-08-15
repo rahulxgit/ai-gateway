@@ -12,21 +12,8 @@ import { env } from '../config/env';
 import { PRICING_PER_1K_TOKENS } from '../config/routing';
 import { classifyError, createSseFrameParser, estimateCost } from './base.adapter';
 
-// Providers like Groq count the *requested* max_tokens against your TPM
-// budget upfront, before a single token is generated — not just what's
-// actually produced. Previously, when a caller didn't specify maxTokens,
-// this adapter defaulted to reserving the entire maxOutputTokens ceiling
-// (e.g. 16,384) on every request, so even "hi" could blow a low TPM cap.
-// This is a much saner "normal chat reply" default budget; callers that
-// actually need long-form output still get up to the real ceiling by
-// passing maxTokens explicitly.
 const DEFAULT_MAX_TOKENS = 1024;
 
-// Defensive safety net for reasoning models (e.g. Groq's qwen3.6-27b) that
-// leak internal chain-of-thought into the visible content wrapped in
-// <think>...</think> tags. We already ask providers to suppress this via
-// extraBodyParams (e.g. Groq's reasoning_format: 'hidden'), but this is a
-// no-op for responses that never contained the tags in the first place.
 function stripThinkTags(content: string): string {
   return content.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
 }
@@ -50,10 +37,8 @@ function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string; conten
 }
 
 /**
- * OpenAI, Groq, Together AI, OpenRouter, and Google Gemini all expose an
- * OpenAI-compatible `/chat/completions` endpoint. Rather than duplicating
- * near-identical adapters, this base class parameterizes over base URL, API
- * key, default model, and any extra headers/body fields.
+ * Shared OpenAI-compatible transport used by OpenAI, Groq, Together AI,
+ * OpenRouter, Gemini and other compatible providers.
  */
 export class OpenAICompatibleAdapter implements ProviderAdapter {
   readonly name: ProviderName;
@@ -65,13 +50,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   private readonly extraHeaders: Record<string, string>;
   private readonly extraBodyParams: Record<string, unknown>;
   private readonly requestTimeoutMs?: number;
-  // Gemini 3 Flash/Flash-Lite reject the legacy sampling fields. Keep this
-  // opt-out per adapter so the shared OpenAI-compatible surface remains
-  // backward-compatible for providers that still accept temperature.
   private readonly sendTemperature: boolean;
-  // Some models can be genuinely free-tier priced even when the provider
-  // also supports paid models. Track those IDs explicitly so analytics do
-  // not invent a non-zero charge for the default free model.
   private readonly freeModels: Set<string>;
 
   constructor(config: {
@@ -127,7 +106,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   }
 
   private estimatedCostUsd(model: string, totalTokens: number): number {
-    if (this.freeModels.has(model)) return 0;
+    if (this.freeModels.has(model) || model.endsWith(':free')) return 0;
     return estimateCost(totalTokens, PRICING_PER_1K_TOKENS[this.name]);
   }
 
@@ -178,6 +157,9 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         {
           ...this.requestBody(options),
           stream: true,
+          // Ask compatible providers for usage in the terminal SSE event
+          // where supported. The parser still falls back to computed totals.
+          stream_options: { include_usage: true },
         },
         { headers: this.headers(), timeout: this.effectiveTimeoutMs(), responseType: 'stream' }
       );
@@ -226,6 +208,20 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     if (!this.isConfigured()) {
       return { status: 'undetermined', model: this.defaultModel, detail: 'not configured' };
     }
+
+    // OpenRouter's free router is a virtual model. It is intentionally absent
+    // from some provider catalog responses, so validating it by literal ID
+    // would incorrectly mark a healthy adapter as unavailable and trigger
+    // failover. A configured OpenRouter key is enough for catalog validation;
+    // real request failures still flow through normal error classification.
+    if (this.defaultModel === 'openrouter/free') {
+      return {
+        status: 'available',
+        model: this.defaultModel,
+        detail: 'dynamic OpenRouter free router; availability is validated on inference',
+      };
+    }
+
     try {
       const { data } = await axios.get(`${this.baseUrl}/models`, {
         headers: this.headers(),
