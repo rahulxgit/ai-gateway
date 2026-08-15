@@ -89,6 +89,48 @@ function callWithBudget<T>(fn: () => Promise<T>, deadline: number): Promise<T> {
   });
 }
 
+async function callWithBudgetRetry<T>(fn: () => Promise<T>, deadline: number): Promise<T> {
+  const baseDelayMs = 400;
+  const maxRetries = Math.max(0, env.maxRetries);
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await callWithBudget(fn, deadline);
+    } catch (err) {
+      if (err instanceof GatewayRequestBudgetExceededError) throw err;
+
+      const providerError = err instanceof ProviderError ? err : undefined;
+      const retryable = providerError?.retryable ?? false;
+      if (!retryable || attempt >= maxRetries) throw err;
+
+      const remainingMs = deadline - Date.now();
+      const jitterMs = Math.floor(Math.random() * 100);
+      const delayMs = Math.min(baseDelayMs * 2 ** attempt + jitterMs, 8_000);
+
+      // Never start a retry if its backoff cannot fit inside the gateway's
+      // remaining wall-clock budget. The caller receives the budget error,
+      // rather than turning a budget exhaustion into a misleading
+      // AllProvidersFailedError.
+      if (remainingMs <= delayMs) {
+        throw new GatewayRequestBudgetExceededError();
+      }
+
+      logger.warn('Retrying provider request within gateway budget', {
+        attempt: attempt + 1,
+        maxRetries,
+        delayMs,
+        remainingBudgetMs: remainingMs,
+        provider: providerError?.provider,
+        errorCode: providerError?.code,
+      });
+
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      attempt += 1;
+    }
+  }
+}
+
 export async function routeChat(request: ChatRequest, correlationId?: string): Promise<RouteResult> {
   const order = candidateOrder(request);
   if (order.length === 0) {
@@ -113,7 +155,7 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
     const model = modelForProvider(request, providerName);
 
     try {
-      const response = await callWithBudget(
+      const response = await callWithBudgetRetry(
         () =>
           adapter.chat({
             messages: request.messages,
