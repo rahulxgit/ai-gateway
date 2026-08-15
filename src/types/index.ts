@@ -3,12 +3,6 @@
 // service, and route depends on these — keep them stable.
 // ---------------------------------------------------------------------------
 
-// Single source of truth for every provider name in the gateway. The type
-// below is derived from this array (not duplicated) specifically so that
-// Zod validation schemas, the provider registry, and the TypeScript type
-// can never drift apart again — that drift is exactly what let a valid
-// forceProvider value like "fireworks" get rejected by request validation
-// after the adapter itself was already wired up and working.
 export const PROVIDER_NAMES = [
   'gemini',
   'anthropic',
@@ -46,7 +40,7 @@ export type TaskType =
 
 export interface ImageAttachment {
   mimeType: string;
-  base64: string; // raw base64, no "data:" prefix
+  base64: string;
 }
 
 export interface ChatMessage {
@@ -90,8 +84,6 @@ export interface StreamChunk {
   usage?: UsageStats;
 }
 
-// Discriminates retryable failures from permanent ones so the router knows
-// whether to fail over to the next provider or bubble up the error.
 export type ProviderErrorCode =
   | 'RATE_LIMITED'
   | 'QUOTA_EXCEEDED'
@@ -122,10 +114,12 @@ export class ProviderError extends Error {
     this.provider = provider;
     this.code = code;
     this.statusCode = statusCode;
-    // AUTH_ERROR / INVALID_REQUEST are the caller's fault and won't be fixed
-    // by switching providers, but the gateway still fails over to be safe
-    // for AUTH/UNAVAILABLE-class issues except invalid request payloads.
+    // Rate-limit and quota failures are intentionally non-retryable against
+    // the same provider. The router should immediately move to another free
+    // provider instead of consuming more scarce quota.
     this.retryable = ![
+      'RATE_LIMITED',
+      'QUOTA_EXCEEDED',
       'AUTH_ERROR',
       'NOT_FOUND',
       'ACCOUNT_SUSPENDED',
@@ -151,20 +145,10 @@ export interface ProviderAdapterOptions {
   maxTokens?: number;
 }
 
-// The interface every single provider adapter must implement. This is what
-// makes the router provider-agnostic and lets us add new providers by just
-// writing a new class, without touching routing logic.
 export interface ProviderAdapter {
   readonly name: ProviderName;
   readonly defaultModel: string;
-  // Whether this adapter's default model accepts image input. The router
-  // uses this to keep image-bearing requests from ever reaching a
-  // provider that would silently ignore or error on the attachment.
   readonly supportsVision: boolean;
-  // The real max output tokens this adapter's default model supports.
-  // Requests are clamped to this value before being sent, so asking for
-  // more than a provider actually allows fails over cleanly instead of
-  // hard-erroring with an invalid-parameter response.
   readonly maxOutputTokens: number;
   isConfigured(): boolean;
   chat(options: ProviderAdapterOptions): Promise<ProviderResponse>;
@@ -172,18 +156,10 @@ export interface ProviderAdapter {
     options: ProviderAdapterOptions,
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ProviderResponse>;
-  // Optional: query the provider's own model catalog (e.g. GET /models) and
-  // report whether this adapter's defaultModel is still live there. Not
-  // every provider exposes a models list endpoint, so this is optional —
-  // adapters that don't implement it are simply skipped by the startup
-  // validator rather than treated as broken. See model-validation.service.ts.
   checkModelAvailability?(): Promise<ModelAvailabilityResult>;
 }
 
 export interface ModelAvailabilityResult {
-  // Undetermined means the check itself failed (network error, auth error,
-  // endpoint not supported at runtime) — NOT that the model is missing.
-  // Only 'unavailable' should be treated as an actionable deprecation signal.
   status: 'available' | 'unavailable' | 'undetermined';
   model: string;
   detail?: string;
@@ -195,10 +171,6 @@ export interface ChatSession {
   createdAt: string;
   updatedAt: string;
 }
-
-// ---------------------------------------------------------------------------
-// Persistent Project Context: conversation memory, project memory, workspace
-// ---------------------------------------------------------------------------
 
 export interface ConversationRecord {
   id: string;
@@ -258,9 +230,6 @@ export interface CodingConventions {
   loggingStyle?: string;
 }
 
-// The full persistent memory for a single project. This is what gets
-// reloaded and re-injected any time the gateway switches providers, so a
-// new model can continue as if it had been there the whole time.
 export interface ProjectMemory {
   projectId: string;
   name: string;
@@ -268,8 +237,8 @@ export interface ProjectMemory {
   currentTask: string | null;
   completedTasks: string[];
   pendingTasks: string[];
-  fileTree: string[]; // folder/file paths, structure only
-  files: Record<string, ProjectFile>; // path -> file
+  fileTree: string[];
+  files: Record<string, ProjectFile>;
   recentEdits: FileEdit[];
   architectureDecisions: ArchitectureDecision[];
   conventions: CodingConventions;
@@ -281,7 +250,7 @@ export interface ProjectMemory {
   errorsEncountered: BugRecord[];
   commitSummaries: CommitSummary[];
   userPreferences: Record<string, string>;
-  conversationSummary: string | null; // compressed history when context grows large
+  conversationSummary: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -294,8 +263,6 @@ export interface ProjectSnapshot {
   createdAt: string;
 }
 
-// What the orchestrator assembles right before calling a provider — the
-// "handoff packet" that lets a brand new provider continue seamlessly.
 export interface ContextHandoff {
   systemPrompt: string;
   relevantFiles: ProjectFile[];
