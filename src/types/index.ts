@@ -236,7 +236,6 @@ export interface ProjectMemory {
   completedTasks: string[];
   pendingTasks: string[];
   fileTree: string[];
-  files: Record<string, ProjectFile>;
   recentEdits: FileEdit[];
   architectureDecisions: ArchitectureDecision[];
   conventions: CodingConventions;

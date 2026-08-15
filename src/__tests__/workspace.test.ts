@@ -12,7 +12,6 @@ describe('project memory + workspace persistence', () => {
     const project = projectMemory.createProject('Logic Looper', 'Daily puzzle platform');
     expect(project.name).toBe('Logic Looper');
     expect(project.pendingTasks).toEqual([]);
-    expect(project.files).toEqual({});
   });
 
   it('tracks tasks moving from pending to completed', () => {

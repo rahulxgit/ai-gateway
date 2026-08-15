@@ -21,7 +21,6 @@ function emptyMemory(id: string, name: string, goal: string, now: string): Proje
     completedTasks: [],
     pendingTasks: [],
     fileTree: [],
-    files: {},
     recentEdits: [],
     architectureDecisions: [],
     conventions: {},
