@@ -98,6 +98,11 @@ describe('GeminiAdapter', () => {
       }
     );
 
+    // Let the mocked axios promise resolve and attach the stream listeners
+    // before emitting SSE frames; otherwise the synchronous emits can race
+    // the adapter's first await and disappear from the test stream.
+    await Promise.resolve();
+
     stream.emit(
       'data',
       'data: {"choices":[{"delta":{"content":"hello "}}]}\n\n'
