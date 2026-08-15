@@ -24,6 +24,7 @@ export class GeminiAdapter extends OpenAICompatibleAdapter {
       defaultModel: 'gemini-3.1-flash-lite',
       supportsVision: true,
       maxOutputTokens: 65536,
+      sendTemperature: false,
     });
   }
 }
