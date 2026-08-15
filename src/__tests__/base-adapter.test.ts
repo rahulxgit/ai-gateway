@@ -1,6 +1,11 @@
+import axios from 'axios';
 import { AxiosError, AxiosResponse } from 'axios';
 import { classifyError, createSseFrameParser, estimateCost } from '../providers/base.adapter';
+import { OpenAICompatibleAdapter } from '../providers/openai-compatible.adapter';
 import { ProviderError } from '../types';
+
+jest.mock('axios');
+const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 function fakeAxiosError(status?: number, code?: string, data?: unknown): AxiosError {
   return {
@@ -121,6 +126,37 @@ describe('estimateCost', () => {
     expect(estimateCost(1000, 0.006)).toBeCloseTo(0.006);
     expect(estimateCost(500, 0.006)).toBeCloseTo(0.003);
     expect(estimateCost(0, 0.006)).toBe(0);
+  });
+});
+
+describe('OpenAI-compatible request cancellation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedAxios.post.mockResolvedValue({
+      data: {
+        choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        model: 'test-model',
+      },
+    });
+  });
+
+  it('passes the caller abort signal to Axios', async () => {
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'groq',
+      baseUrl: 'https://example.test/v1',
+      apiKey: 'fake-key',
+      defaultModel: 'test-model',
+    });
+    const controller = new AbortController();
+
+    await adapter.chat({
+      messages: [{ role: 'user', content: 'hello' }],
+      signal: controller.signal,
+    });
+
+    const config = mockedAxios.post.mock.calls[0][2] as { signal?: AbortSignal };
+    expect(config.signal).toBe(controller.signal);
   });
 });
 
