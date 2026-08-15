@@ -92,9 +92,8 @@ function callWithBudget<T>(fn: () => Promise<T>, deadline: number): Promise<T> {
 async function callWithBudgetRetry<T>(fn: () => Promise<T>, deadline: number): Promise<T> {
   const baseDelayMs = 400;
   const maxRetries = Math.max(0, env.maxRetries);
-  let attempt = 0;
 
-  while (true) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
       return await callWithBudget(fn, deadline);
     } catch (err) {
@@ -102,7 +101,7 @@ async function callWithBudgetRetry<T>(fn: () => Promise<T>, deadline: number): P
 
       const providerError = err instanceof ProviderError ? err : undefined;
       const retryable = providerError?.retryable ?? false;
-      if (!retryable || attempt >= maxRetries) throw err;
+      if (!retryable || attempt === maxRetries) throw err;
 
       const remainingMs = deadline - Date.now();
       const jitterMs = Math.floor(Math.random() * 100);
@@ -122,9 +121,10 @@ async function callWithBudgetRetry<T>(fn: () => Promise<T>, deadline: number): P
       });
 
       await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
-      attempt += 1;
     }
   }
+
+  throw new GatewayRequestBudgetExceededError();
 }
 
 export async function routeChat(request: ChatRequest, correlationId?: string): Promise<RouteResult> {
