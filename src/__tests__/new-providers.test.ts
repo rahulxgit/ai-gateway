@@ -1,5 +1,5 @@
 import { providerRegistry, listAllProviders } from '../providers/registry';
-import { PRICING_PER_1K_TOKENS, DEFAULT_FAILOVER_ORDER } from '../config/routing';
+import { PRICING_PER_1K_TOKENS, FREE_AUTO_PROVIDERS, DEFAULT_FAILOVER_ORDER } from '../config/routing';
 import { ProviderName } from '../types';
 
 const NEW_PROVIDERS: ProviderName[] = [
@@ -15,7 +15,7 @@ const NEW_PROVIDERS: ProviderName[] = [
   'aimlapi',
 ];
 
-describe('newly added free/free-tier providers', () => {
+describe('newly added providers', () => {
   it('are all present in the provider registry', () => {
     for (const name of NEW_PROVIDERS) {
       expect(providerRegistry[name]).toBeDefined();
@@ -25,25 +25,13 @@ describe('newly added free/free-tier providers', () => {
 
   it('are all present in listAllProviders()', () => {
     const all = listAllProviders();
-    for (const name of NEW_PROVIDERS) {
-      expect(all).toContain(name);
-    }
+    for (const name of NEW_PROVIDERS) expect(all).toContain(name);
   });
 
   it('each expose a non-empty default model and a sane maxOutputTokens', () => {
     for (const name of NEW_PROVIDERS) {
-      const adapter = providerRegistry[name];
-      expect(adapter.defaultModel.length).toBeGreaterThan(0);
-      expect(adapter.maxOutputTokens).toBeGreaterThan(0);
-    }
-  });
-
-  it('report unconfigured when no API key env var is set', () => {
-    for (const name of NEW_PROVIDERS) {
-
-      // Skip if the current environment actually has this key set (like NVIDIA_API_KEY in the runner)
-      if (providerRegistry[name].isConfigured()) continue;
-      expect(providerRegistry[name].isConfigured()).toBe(false);
+      expect(providerRegistry[name].defaultModel.length).toBeGreaterThan(0);
+      expect(providerRegistry[name].maxOutputTokens).toBeGreaterThan(0);
     }
   });
 
@@ -54,28 +42,18 @@ describe('newly added free/free-tier providers', () => {
     }
   });
 
-  it('are appended to the default failover order without disturbing existing providers', () => {
-    const originalOrder: ProviderName[] = [
-      'gemini',
-      'anthropic',
-      'deepseek',
-      'cerebras',
-      'groq',
-      'mistral',
-      'kimi',
-      'together',
-      'openrouter',
-      'openai',
-      'huggingface',
-    ];
-    // Every previously-existing provider keeps its original relative order.
-    const positions = originalOrder.map((p) => DEFAULT_FAILOVER_ORDER.indexOf(p));
-    for (let i = 1; i < positions.length; i++) {
-      expect(positions[i]).toBeGreaterThan(positions[i - 1]);
-    }
+  it('keeps automatic routing restricted to the free pool', () => {
+    for (const name of FREE_AUTO_PROVIDERS) expect(DEFAULT_FAILOVER_ORDER).toContain(name);
     for (const name of NEW_PROVIDERS) {
-      expect(DEFAULT_FAILOVER_ORDER).toContain(name);
+      if (!FREE_AUTO_PROVIDERS.includes(name)) expect(DEFAULT_FAILOVER_ORDER).not.toContain(name);
     }
+  });
+
+  it('keeps paid/credit-dependent providers available for explicit selection only', () => {
+    expect(FREE_AUTO_PROVIDERS).not.toContain('openai');
+    expect(FREE_AUTO_PROVIDERS).not.toContain('anthropic');
+    expect(FREE_AUTO_PROVIDERS).not.toContain('deepseek');
+    expect(FREE_AUTO_PROVIDERS).not.toContain('huggingface');
   });
 
   it('cloudflare requires both an API key and an account id to be configured', async () => {
@@ -84,10 +62,8 @@ describe('newly added free/free-tier providers', () => {
       process.env.CLOUDFLARE_API_KEY = 'test-key';
       delete process.env.CLOUDFLARE_ACCOUNT_ID;
       jest.resetModules();
-      // Re-require after mutating env so a fresh adapter instance picks it up.
       const { CloudflareAdapter } = await import('../providers/cloudflare.adapter');
-      const adapter = new CloudflareAdapter();
-      expect(adapter.isConfigured()).toBe(false);
+      expect(new CloudflareAdapter().isConfigured()).toBe(false);
     } finally {
       if (original.key === undefined) delete process.env.CLOUDFLARE_API_KEY;
       else process.env.CLOUDFLARE_API_KEY = original.key;

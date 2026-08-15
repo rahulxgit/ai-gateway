@@ -9,33 +9,18 @@ import {
   StreamChunk,
 } from '../types';
 import { env } from '../config/env';
-import { PRICING_PER_1K_TOKENS } from '../config/routing';
+import { isFreeModel, PRICING_PER_1K_TOKENS } from '../config/routing';
 import { classifyError, createSseFrameParser, estimateCost } from './base.adapter';
 
-// Providers like Groq count the *requested* max_tokens against your TPM
-// budget upfront, before a single token is generated — not just what's
-// actually produced. Previously, when a caller didn't specify maxTokens,
-// this adapter defaulted to reserving the entire maxOutputTokens ceiling
-// (e.g. 16,384) on every request, so even "hi" could blow a low TPM cap.
-// This is a much saner "normal chat reply" default budget; callers that
-// actually need long-form output still get up to the real ceiling by
-// passing maxTokens explicitly.
 const DEFAULT_MAX_TOKENS = 1024;
 
-// Defensive safety net for reasoning models (e.g. Groq's qwen3.6-27b) that
-// leak internal chain-of-thought into the visible content wrapped in
-// <think>...</think> tags. We already ask providers to suppress this via
-// extraBodyParams (e.g. Groq's reasoning_format: 'hidden'), but this is a
-// no-op for responses that never contained the tags in the first place.
 function stripThinkTags(content: string): string {
   return content.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
 }
 
 function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string; content: unknown }> {
   return messages.map((m) => {
-    if (!m.images || m.images.length === 0) {
-      return { role: m.role, content: m.content };
-    }
+    if (!m.images || m.images.length === 0) return { role: m.role, content: m.content };
     return {
       role: m.role,
       content: [
@@ -49,12 +34,7 @@ function toOpenAIMessages(messages: ChatMessage[]): Array<{ role: string; conten
   });
 }
 
-/**
- * OpenAI, Groq, Together AI, OpenRouter, and Google Gemini all expose an
- * OpenAI-compatible `/chat/completions` endpoint. Rather than duplicating
- * near-identical adapters, this base class parameterizes over base URL, API
- * key, default model, and any extra headers/body fields.
- */
+/** Shared OpenAI-compatible transport used by multiple provider adapters. */
 export class OpenAICompatibleAdapter implements ProviderAdapter {
   readonly name: ProviderName;
   readonly defaultModel: string;
@@ -65,13 +45,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   private readonly extraHeaders: Record<string, string>;
   private readonly extraBodyParams: Record<string, unknown>;
   private readonly requestTimeoutMs?: number;
-  // Gemini 3 Flash/Flash-Lite reject the legacy sampling fields. Keep this
-  // opt-out per adapter so the shared OpenAI-compatible surface remains
-  // backward-compatible for providers that still accept temperature.
   private readonly sendTemperature: boolean;
-  // Some models can be genuinely free-tier priced even when the provider
-  // also supports paid models. Track those IDs explicitly so analytics do
-  // not invent a non-zero charge for the default free model.
   private readonly freeModels: Set<string>;
 
   constructor(config: {
@@ -126,22 +100,36 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     };
   }
 
-  private estimatedCostUsd(model: string, totalTokens: number): number {
-    if (this.freeModels.has(model)) return 0;
+  private isConfiguredFreeModel(model: string): boolean {
+    return this.freeModels.has(model) || isFreeModel(this.name, model);
+  }
+
+  private estimatedCostUsd(model: string, totalTokens: number, requestedModel = model): number {
+    if (this.isConfiguredFreeModel(model) || this.isConfiguredFreeModel(requestedModel)) return 0;
     return estimateCost(totalTokens, PRICING_PER_1K_TOKENS[this.name]);
+  }
+
+  private axiosRequestConfig(options: ProviderAdapterOptions, extra: Record<string, unknown> = {}) {
+    return {
+      headers: this.headers(),
+      timeout: this.effectiveTimeoutMs(),
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...extra,
+    };
   }
 
   async chat(options: ProviderAdapterOptions): Promise<ProviderResponse> {
     const start = Date.now();
-    const model = options.model ?? this.defaultModel;
+    const requestedModel = options.model ?? this.defaultModel;
 
     try {
       const { data } = await axios.post(
         `${this.baseUrl}/chat/completions`,
         this.requestBody(options),
-        { headers: this.headers(), timeout: this.effectiveTimeoutMs() }
+        this.axiosRequestConfig(options)
       );
 
+      const responseModel = data.model ?? requestedModel;
       const content = stripThinkTags(data.choices?.[0]?.message?.content ?? '');
       const usage = {
         promptTokens: data.usage?.prompt_tokens ?? 0,
@@ -151,11 +139,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
 
       return {
         provider: this.name,
-        model: data.model ?? model,
+        model: responseModel,
         content,
         usage,
         latencyMs: Date.now() - start,
-        estimatedCostUsd: this.estimatedCostUsd(data.model ?? model, usage.totalTokens),
+        estimatedCostUsd: this.estimatedCostUsd(responseModel, usage.totalTokens, requestedModel),
         finishReason: data.choices?.[0]?.finish_reason,
       };
     } catch (err) {
@@ -168,18 +156,16 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ProviderResponse> {
     const start = Date.now();
-    const model = options.model ?? this.defaultModel;
+    const requestedModel = options.model ?? this.defaultModel;
+    let responseModel = requestedModel;
     let fullText = '';
     const usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
     try {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
-        {
-          ...this.requestBody(options),
-          stream: true,
-        },
-        { headers: this.headers(), timeout: this.effectiveTimeoutMs(), responseType: 'stream' }
+        { ...this.requestBody(options), stream: true },
+        this.axiosRequestConfig(options, { responseType: 'stream' })
       );
 
       await new Promise<void>((resolve, reject) => {
@@ -187,10 +173,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
           if (payload === '[DONE]') return;
           try {
             const evt = JSON.parse(payload);
+            if (evt.model) responseModel = evt.model;
             const delta = evt.choices?.[0]?.delta?.content ?? '';
             if (delta) {
               fullText += delta;
-              onChunk({ provider: this.name, model, delta, done: false });
+              onChunk({ provider: this.name, model: responseModel, delta, done: false });
             }
             if (evt.usage) {
               usage.promptTokens = evt.usage.prompt_tokens ?? usage.promptTokens;
@@ -207,15 +194,15 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       });
 
       if (!usage.totalTokens) usage.totalTokens = usage.promptTokens + usage.completionTokens;
-      onChunk({ provider: this.name, model, delta: '', done: true, usage });
+      onChunk({ provider: this.name, model: responseModel, delta: '', done: true, usage });
 
       return {
         provider: this.name,
-        model,
+        model: responseModel,
         content: stripThinkTags(fullText),
         usage,
         latencyMs: Date.now() - start,
-        estimatedCostUsd: this.estimatedCostUsd(model, usage.totalTokens),
+        estimatedCostUsd: this.estimatedCostUsd(responseModel, usage.totalTokens, requestedModel),
       };
     } catch (err) {
       throw classifyError(this.name, err);
@@ -226,6 +213,15 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     if (!this.isConfigured()) {
       return { status: 'undetermined', model: this.defaultModel, detail: 'not configured' };
     }
+
+    if (this.defaultModel === 'openrouter/free') {
+      return {
+        status: 'available',
+        model: this.defaultModel,
+        detail: 'dynamic OpenRouter free router; availability is validated on inference',
+      };
+    }
+
     try {
       const { data } = await axios.get(`${this.baseUrl}/models`, {
         headers: this.headers(),
