@@ -105,11 +105,17 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   }
 
   private estimatedCostUsd(model: string, totalTokens: number, requestedModel = model): number {
-    // Dynamic OpenRouter free routing can return the concrete selected model
-    // in the response. Preserve the zero-cost guarantee based on the request
-    // model as well as the returned model.
     if (this.isConfiguredFreeModel(model) || this.isConfiguredFreeModel(requestedModel)) return 0;
     return estimateCost(totalTokens, PRICING_PER_1K_TOKENS[this.name]);
+  }
+
+  private axiosRequestConfig(options: ProviderAdapterOptions, extra: Record<string, unknown> = {}) {
+    return {
+      headers: this.headers(),
+      timeout: this.effectiveTimeoutMs(),
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...extra,
+    };
   }
 
   async chat(options: ProviderAdapterOptions): Promise<ProviderResponse> {
@@ -120,7 +126,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       const { data } = await axios.post(
         `${this.baseUrl}/chat/completions`,
         this.requestBody(options),
-        { headers: this.headers(), timeout: this.effectiveTimeoutMs() }
+        this.axiosRequestConfig(options)
       );
 
       const responseModel = data.model ?? requestedModel;
@@ -159,7 +165,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         { ...this.requestBody(options), stream: true },
-        { headers: this.headers(), timeout: this.effectiveTimeoutMs(), responseType: 'stream' }
+        this.axiosRequestConfig(options, { responseType: 'stream' })
       );
 
       await new Promise<void>((resolve, reject) => {
