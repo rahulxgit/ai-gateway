@@ -25,9 +25,8 @@ const DEFAULT_MAX_TOKENS = 1024;
 // Defensive safety net for reasoning models (e.g. Groq's qwen3.6-27b) that
 // leak internal chain-of-thought into the visible content wrapped in
 // <think>...</think> tags. We already ask providers to suppress this via
-// extraBodyParams (e.g. reasoning_format: 'hidden'), but that setting has
-// been reported unreliable in the wild — this is a no-op for any response
-// that never contained the tags in the first place.
+// extraBodyParams (e.g. Groq's reasoning_format: 'hidden'), but this is a
+// no-op for responses that never contained the tags in the first place.
 function stripThinkTags(content: string): string {
   return content.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
 }
@@ -70,6 +69,10 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   // opt-out per adapter so the shared OpenAI-compatible surface remains
   // backward-compatible for providers that still accept temperature.
   private readonly sendTemperature: boolean;
+  // Some models can be genuinely free-tier priced even when the provider
+  // also supports paid models. Track those IDs explicitly so analytics do
+  // not invent a non-zero charge for the default free model.
+  private readonly freeModels: Set<string>;
 
   constructor(config: {
     name: ProviderName;
@@ -82,6 +85,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     extraBodyParams?: Record<string, unknown>;
     requestTimeoutMs?: number;
     sendTemperature?: boolean;
+    freeModels?: string[];
   }) {
     this.name = config.name;
     this.defaultModel = config.defaultModel;
@@ -93,6 +97,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     this.extraBodyParams = config.extraBodyParams ?? {};
     this.requestTimeoutMs = config.requestTimeoutMs;
     this.sendTemperature = config.sendTemperature ?? true;
+    this.freeModels = new Set(config.freeModels ?? []);
   }
 
   isConfigured(): boolean {
@@ -121,6 +126,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     };
   }
 
+  private estimatedCostUsd(model: string, totalTokens: number): number {
+    if (this.freeModels.has(model)) return 0;
+    return estimateCost(totalTokens, PRICING_PER_1K_TOKENS[this.name]);
+  }
+
   async chat(options: ProviderAdapterOptions): Promise<ProviderResponse> {
     const start = Date.now();
     const model = options.model ?? this.defaultModel;
@@ -145,7 +155,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         content,
         usage,
         latencyMs: Date.now() - start,
-        estimatedCostUsd: estimateCost(usage.totalTokens, PRICING_PER_1K_TOKENS[this.name]),
+        estimatedCostUsd: this.estimatedCostUsd(data.model ?? model, usage.totalTokens),
         finishReason: data.choices?.[0]?.finish_reason,
       };
     } catch (err) {
@@ -205,7 +215,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         content: stripThinkTags(fullText),
         usage,
         latencyMs: Date.now() - start,
-        estimatedCostUsd: estimateCost(usage.totalTokens, PRICING_PER_1K_TOKENS[this.name]),
+        estimatedCostUsd: this.estimatedCostUsd(model, usage.totalTokens),
       };
     } catch (err) {
       throw classifyError(this.name, err);
