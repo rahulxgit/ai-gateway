@@ -130,6 +130,30 @@ describe('GeminiAdapter', () => {
     );
   });
 
+  it('checks Gemini model availability through the OpenAI-compatible models endpoint', async () => {
+    mockedAxios.get.mockResolvedValue({
+      data: {
+        data: [{ id: 'gemini-3.1-flash-lite' }, { id: 'gemini-3.6-flash' }],
+      },
+    } as never);
+
+    const adapter = new GeminiAdapter();
+    const result = await adapter.checkModelAvailability();
+
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/openai/models',
+      expect.objectContaining({
+        timeout: env.requestTimeoutMs,
+        headers: expect.objectContaining({ Authorization: 'Bearer test-gemini-key' }),
+      })
+    );
+    expect(result).toEqual({
+      status: 'available',
+      model: 'gemini-3.1-flash-lite',
+      detail: undefined,
+    });
+  });
+
   it('uses the configured env object for API-key initialization', () => {
     const original = env.geminiApiKey;
     try {
