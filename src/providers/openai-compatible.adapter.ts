@@ -157,9 +157,6 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         {
           ...this.requestBody(options),
           stream: true,
-          // Ask compatible providers for usage in the terminal SSE event
-          // where supported. The parser still falls back to computed totals.
-          stream_options: { include_usage: true },
         },
         { headers: this.headers(), timeout: this.effectiveTimeoutMs(), responseType: 'stream' }
       );
