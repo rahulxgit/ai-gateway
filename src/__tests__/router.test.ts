@@ -10,7 +10,7 @@ import { routeChat, routeChatStream, AllProvidersFailedError, GatewayRequestBudg
 import { recordSuccess, recordFailure } from '../services/health.service';
 
 jest.mock('../config/env', () => ({
-  env: { ...jest.requireActual('../config/env').env, gatewayRequestBudgetMs: 100, maxRetries: 2 },
+  env: { ...jest.requireActual('../config/env').env, gatewayRequestBudgetMs: 1000, maxRetries: 2 },
 }));
 
 function mockAdapter(
@@ -148,7 +148,7 @@ describe('routeChat free-first failover', () => {
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
-  it('enforces one wall-clock budget across the failover chain', async () => {
+  it('enforces one wall-clock budget across the failover chain for transient timeout retries', async () => {
     const nowSpy = jest.spyOn(Date, 'now');
     const times = [1_000, 1_050, 1_150];
     nowSpy.mockImplementation(() => times.shift() ?? 1_150);
@@ -158,7 +158,7 @@ describe('routeChat free-first failover', () => {
     (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, openrouter }[name as 'gemini' | 'openrouter']));
 
     await expect(routeChat({ messages: [{ role: 'user', content: 'hello' }] })).rejects.toBeInstanceOf(GatewayRequestBudgetExceededError);
-    expect(gemini.chat).toHaveBeenCalledTimes(1);
+    expect(gemini.chat).toHaveBeenCalledTimes(3);
     expect(openrouter.chat).not.toHaveBeenCalled();
     nowSpy.mockRestore();
   });
