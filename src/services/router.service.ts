@@ -108,10 +108,6 @@ async function callWithBudgetRetry<T>(fn: () => Promise<T>, deadline: number): P
       const jitterMs = Math.floor(Math.random() * 100);
       const delayMs = Math.min(baseDelayMs * 2 ** attempt + jitterMs, 8_000);
 
-      // Never start a retry if its backoff cannot fit inside the gateway's
-      // remaining wall-clock budget. The caller receives the budget error,
-      // rather than turning a budget exhaustion into a misleading
-      // AllProvidersFailedError.
       if (remainingMs <= delayMs) {
         throw new GatewayRequestBudgetExceededError();
       }
