@@ -100,7 +100,7 @@ The gateway supports Google Gemini through the **Gemini Developer API / Google A
 GEMINI_API_KEY=your_google_gemini_api_key
 ```
 
-The default Gemini model is **`gemini-3.1-flash-lite`**. Google lists this GA model in the Gemini API free tier and describes it as optimized for high-volume, lightweight workloads. The gateway therefore prefers it in the general and cheap routing lanes. Google applies free-tier rate limits at the **project level**, measured primarily through RPM, TPM, and RPD; active limits are account/project/model dependent and should be checked in Google AI Studio. The gateway deliberately does not hard-code a universal quota or assume that multiple API keys multiply a project's capacity.
+The default Gemini model is **`gemini-3.1-flash-lite`**. Google lists this GA model in the Gemini API free tier and describes it as optimized for high-volume, lightweight workloads. The gateway therefore prefers it in the general and cheap routing lanes. Google applies free-tier rate limits at the **project level**, measured through RPM, TPM, and RPD; active limits are account/project/model dependent and should be checked in Google AI Studio. The gateway deliberately does not hard-code a universal quota or assume that multiple API keys multiply a project's capacity.
 
 OpenAI-compatible Gemini requests are routed through:
 
@@ -110,7 +110,7 @@ https://generativelanguage.googleapis.com/v1beta/openai
 
 The shared OpenAI-compatible adapter provides model discovery, streaming, error classification, and automatic failover. This keeps Gemini behavior consistent with the other OpenAI-compatible providers without duplicating transport code.
 
-**Important:** Google's OpenAI compatibility layer is intended for unified Chat Completions-style integrations. Gemini-specific features such as some built-in tools and other native capabilities may require Google's direct Gemini API instead.
+**Important:** Google's OpenAI compatibility layer is intended for unified Chat Completions-style integrations. Gemini-specific features such as some built-in tools and other native capabilities may require Google's direct Gemini API.
 
 Official documentation:
 
@@ -248,3 +248,177 @@ L2 Redis
        ↓ miss / Redis unavailable
 SQLite/provider operation
 ```
+
+A Redis outage is treated as a cache failure, not an application failure. The application continues using the existing local/database/provider path.
+
+Enable it with:
+
+```text
+CACHE_ENABLED=true
+CACHE_TTL_SECONDS=300
+REDIS_URL=<redis-compatible-url>
+```
+
+## API endpoints
+
+### Chat
+
+`POST /chat`  
+Standard non-streaming chat request.
+
+`POST /chat/stream`  
+Streaming chat request.
+
+`POST /chat` and `POST /chat/stream` use a 50 MB JSON parser to preserve large vision payloads.
+
+### Health and provider discovery
+
+`GET /health`  
+Provider health/status information.
+
+`GET /health/models`  
+Checks configured provider model availability, including Gemini and Anthropic.
+
+`GET /providers`  
+Lists configured/available providers.
+
+These lightweight read endpoints use the generous read rate limiter.
+
+### Analytics
+
+`GET /analytics`  
+Usage, cost, request, and failover analytics.
+
+The analytics service can use the optional Redis L2 cache, while the 24-hour cost guard continues to use the live persistence path for budget enforcement.
+
+### Sessions, projects, workspace, and uploads
+
+The gateway also exposes the existing session, project, workspace, and upload APIs. The upload route keeps its existing Multer file-size limit; the new 2 MB JSON default does not replace the upload-specific handling.
+
+## Chat request example
+
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Explain how provider failover works."
+    }
+  ],
+  "taskType": "reasoning"
+}
+```
+
+Optional routing controls include `taskType`, `forceProvider`, and `model`.
+
+Example forcing a provider:
+
+```json
+{
+  "messages": [
+    { "role": "user", "content": "Give me a concise code review." }
+  ],
+  "forceProvider": "anthropic"
+}
+```
+
+### Vision request shape
+
+The current chat schema uses `messages[].images[]`:
+
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Describe this image.",
+      "images": [
+        {
+          "mimeType": "image/jpeg",
+          "base64": "..."
+        }
+      ]
+    }
+  ]
+}
+```
+
+Each image attachment is validated as an `image/*` MIME type with a base64 payload limit, and the router restricts image requests to vision-capable providers.
+
+## Response and observability
+
+Successful chat responses include the existing message and metadata fields, including provider/model information and the failover chain.
+
+Every HTTP request receives an `X-Request-ID` correlation ID. The same correlation ID is threaded into relevant router, orchestrator, health, and error logs so a request can be traced across failover and provider-health events.
+
+## Reliability and hardening
+
+The current `main` includes the following production hardening changes:
+
+1. **Global request budget** — a single wall-clock deadline applies across the provider failover chain so a full outage cannot run indefinitely.
+2. **Retry classification** — authentication, not-found, suspended-account, and insufficient-credit conditions are non-retryable for the same provider, while failover to other providers remains possible.
+3. **24-hour cost guard** — an optional rolling spend budget returns HTTP `429` when exceeded.
+4. **Split rate limiting** — `/health` and `/providers` are generous read endpoints; chat traffic uses the stricter limiter.
+5. **Model availability checks** — Gemini and Anthropic participate in `/health/models` alongside the other adapters.
+6. **Correlation IDs** — UUID request IDs are propagated through service logging.
+7. **Production logging** — production logs are emitted to stdout instead of depending on persistent log files.
+8. **Graceful shutdown** — `SIGTERM`/`SIGINT` stops new HTTP connections, drains active requests, closes optional Redis, and closes SQLite with a bounded fallback.
+9. **Optional Redis L2** — Redis can back analytics/model-validation caches while the in-process cache remains the fast path and fallback.
+10. **Body-size hardening** — normal JSON is capped at 2 MB; chat JSON remains at 50 MB for existing image/vision payloads.
+
+## Security note
+
+The gateway does not currently implement API-key authentication for its own HTTP API. If you expose the backend publicly, add an authentication/authorization layer before treating it as a shared production service. Provider rate limits and the gateway's own rate limiter/cost guard are not substitutes for client authentication.
+
+## Render deployment
+
+See [docs/RENDER_DEPLOYMENT.md](docs/RENDER_DEPLOYMENT.md) for production environment variables, Redis setup, and SQLite persistence.
+
+Important for Render + SQLite: the image runs as the non-root `gateway` user and already owns `/app/data`. If you attach a Render persistent disk, mount it at `/app/data` and use:
+
+```text
+DATABASE_URL=/app/data/gateway.db
+```
+
+Do not point the application at `/var/data` unless that directory is explicitly created and writable by the service user.
+
+## Tests and CI
+
+The project uses Jest, TypeScript, and ESLint. The CI pipeline validates TypeScript, linting, tests, and build; Docker and Vercel checks run in the repository's pull-request workflow.
+
+Recommended local checks before opening a PR:
+
+```bash
+npx tsc --noEmit
+npm run lint
+npx jest --runInBand
+npm run build
+```
+
+## Project layout
+
+```text
+src/
+  config/                 environment + routing configuration
+  controllers/            HTTP controllers
+  database/               SQLite client, schema, migration
+  middleware/             rate limits, validation, request IDs, body limits
+  providers/              provider adapters + registry
+  routes/                 Express route registration
+  services/               router, orchestrator, analytics, health, projects, uploads
+  types/                  shared TypeScript types
+  utils/                  logger, Redis cache, graceful shutdown, helpers
+  __tests__/              Jest tests
+frontend/
+  React dashboard and API client
+```
+
+## Development principles
+
+Keep the core architecture stable:
+
+```text
+router → orchestrator → provider adapters → SQLite
+```
+
+Hardening changes should preserve existing API response shapes and frontend contracts. Prefer small, isolated changes with regression tests and keep `PROJECT_OVERVIEW.md` synchronized when architecture or environment behavior changes.
