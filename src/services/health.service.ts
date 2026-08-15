@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 const LATENCY_WINDOW = 20;
 const DEGRADED_LATENCY_MS = 6000;
 const DOWN_AFTER_FAILURES = 3;
+const DOWN_RECOVERY_COOLDOWN_MS = 10 * 60_000;
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60_000;
 const QUOTA_COOLDOWN_MS = 30 * 60_000;
 
@@ -58,10 +59,10 @@ export function recordFailure(
     s.cooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
   } else if (errorCode === 'ACCOUNT_SUSPENDED' || errorCode === 'INSUFFICIENT_CREDITS') {
     s.status = 'down';
-    s.cooldownUntil = undefined;
+    s.cooldownUntil = Date.now() + DOWN_RECOVERY_COOLDOWN_MS;
   } else if (s.consecutiveFailures >= DOWN_AFTER_FAILURES) {
     s.status = 'down';
-    s.cooldownUntil = undefined;
+    s.cooldownUntil = Date.now() + DOWN_RECOVERY_COOLDOWN_MS;
   } else {
     s.status = 'degraded';
     s.cooldownUntil = undefined;
@@ -83,8 +84,9 @@ function restoreAfterCooldown(provider: ProviderName): void {
 
   s.cooldownUntil = undefined;
   s.lastCheckedAt = new Date().toISOString();
+  s.consecutiveFailures = 0;
   s.status = s.avgLatencyMs && s.avgLatencyMs > DEGRADED_LATENCY_MS ? 'degraded' : 'unknown';
-  logger.debug('Provider cooldown expired; provider is eligible for a health probe', {
+  logger.debug('Provider cooldown expired; provider is eligible again', {
     provider,
     status: s.status,
   });
@@ -100,11 +102,16 @@ export function getHealthSnapshot(): ProviderHealth[] {
   });
 }
 
-/** Returns whether a provider can participate in the current routing attempt. */
+/**
+ * Returns whether a provider can participate in an automatic routing attempt.
+ * Healthy and degraded providers are eligible; rate-limited providers are
+ * skipped until cooldown expiry; temporary down states are also skipped until
+ * their recovery cooldown expires.
+ */
 export function isLikelyHealthy(provider: ProviderName): boolean {
   restoreAfterCooldown(provider);
   const s = state[provider];
-  if (s.status === 'down') return false;
   if (s.cooldownUntil && Date.now() < s.cooldownUntil) return false;
+  if (s.status === 'down') return false;
   return true;
 }
