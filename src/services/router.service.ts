@@ -61,19 +61,25 @@ function modelForProvider(request: ChatRequest, providerName: ProviderName): str
   return request.forceProvider === providerName ? request.model : undefined;
 }
 
-function callWithBudget<T>(fn: () => Promise<T>, deadline: number): Promise<T> {
+function callWithBudget<T>(
+  fn: (signal: AbortSignal) => Promise<T>,
+  deadline: number
+): Promise<T> {
   const remainingMs = deadline - Date.now();
   if (remainingMs <= 0) return Promise.reject(new GatewayRequestBudgetExceededError());
+
+  const controller = new AbortController();
 
   return new Promise<T>((resolve, reject) => {
     let settled = false;
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
+      controller.abort();
       reject(new GatewayRequestBudgetExceededError());
     }, remainingMs);
 
-    fn()
+    fn(controller.signal)
       .then((value) => {
         if (settled) return;
         settled = true;
@@ -89,7 +95,10 @@ function callWithBudget<T>(fn: () => Promise<T>, deadline: number): Promise<T> {
   });
 }
 
-async function callWithBudgetRetry<T>(fn: () => Promise<T>, deadline: number): Promise<T> {
+async function callWithBudgetRetry<T>(
+  fn: (signal: AbortSignal) => Promise<T>,
+  deadline: number
+): Promise<T> {
   const baseDelayMs = 400;
   const maxRetries = Math.max(0, env.maxRetries);
 
@@ -152,12 +161,13 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
 
     try {
       const response = await callWithBudgetRetry(
-        () =>
+        (signal) =>
           adapter.chat({
             messages: request.messages,
             model,
             temperature: request.temperature,
             maxTokens: request.maxTokens,
+            signal,
           }),
         deadline
       );
@@ -221,13 +231,14 @@ export async function routeChatStream(
 
     try {
       const response = await callWithBudget(
-        () =>
+        (signal) =>
           adapter.chatStream(
             {
               messages: request.messages,
               model,
               temperature: request.temperature,
               maxTokens: request.maxTokens,
+              signal,
             },
             (chunk) => {
               emittedAnyChunk = emittedAnyChunk || chunk.delta.length > 0;
