@@ -73,7 +73,9 @@ describe('routeChat free-first failover', () => {
     (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'openrouter', 'groq', 'cerebras', 'mistral', 'cloudflare', 'openai']);
     const adapters: Record<string, ReturnType<typeof mockAdapter>> = {};
     for (const provider of ['gemini', 'openrouter', 'groq', 'cerebras', 'mistral', 'cloudflare', 'openai'] as ProviderName[]) {
-      adapters[provider] = mockAdapter(provider, async () => { throw new ProviderError(provider, 'SERVER_ERROR', `${provider} down`); });
+      adapters[provider] = mockAdapter(provider, async () => {
+        throw new ProviderError(provider, 'INVALID_REQUEST', `${provider} rejected request`);
+      });
     }
     (getProvider as jest.Mock).mockImplementation((name: ProviderName) => adapters[name]);
 
@@ -148,19 +150,28 @@ describe('routeChat free-first failover', () => {
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
-  it('enforces one wall-clock budget across the failover chain for transient timeout retries', async () => {
-    const nowSpy = jest.spyOn(Date, 'now');
-    const times = [1_000, 1_050, 1_150];
-    nowSpy.mockImplementation(() => times.shift() ?? 1_150);
-    const gemini = mockAdapter('gemini', async () => { throw new ProviderError('gemini', 'TIMEOUT', 'timed out'); });
-    const openrouter = mockAdapter('openrouter', async () => { throw new ProviderError('openrouter', 'TIMEOUT', 'timed out'); });
-    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'openrouter']);
-    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, openrouter }[name as 'gemini' | 'openrouter']));
+  it('enforces the global budget before starting a retry that cannot fit', async () => {
+    const mockedEnv = jest.requireMock('../config/env') as { env: { maxRetries: number; gatewayRequestBudgetMs: number } };
+    const previousRetries = mockedEnv.env.maxRetries;
+    const previousBudget = mockedEnv.env.gatewayRequestBudgetMs;
+    mockedEnv.env.maxRetries = 1;
+    mockedEnv.env.gatewayRequestBudgetMs = 100;
 
-    await expect(routeChat({ messages: [{ role: 'user', content: 'hello' }] })).rejects.toBeInstanceOf(GatewayRequestBudgetExceededError);
-    expect(gemini.chat).toHaveBeenCalledTimes(3);
-    expect(openrouter.chat).not.toHaveBeenCalled();
-    nowSpy.mockRestore();
+    try {
+      const gemini = mockAdapter('gemini', async () => {
+        throw new ProviderError('gemini', 'TIMEOUT', 'timed out');
+      });
+      (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'openrouter']);
+      (getProvider as jest.Mock).mockImplementation((name: ProviderName) =>
+        name === 'gemini' ? gemini : mockAdapter('openrouter', async () => { throw new Error('must not reach next provider once budget is exhausted'); })
+      );
+
+      await expect(routeChat({ messages: [{ role: 'user', content: 'hello' }] })).rejects.toBeInstanceOf(GatewayRequestBudgetExceededError);
+      expect(gemini.chat).toHaveBeenCalledTimes(1);
+    } finally {
+      mockedEnv.env.maxRetries = previousRetries;
+      mockedEnv.env.gatewayRequestBudgetMs = previousBudget;
+    }
   });
 });
 
