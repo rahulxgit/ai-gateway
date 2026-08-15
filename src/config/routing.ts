@@ -1,65 +1,56 @@
 import { ProviderName, TaskType } from '../types';
 
-// Default failover order used when no task type is given or a task's
-// preferred providers are all unavailable. Gemini leads the general lane
-// because its current GA Flash-Lite model is available in the Gemini API's
-// free tier and is designed for high-volume, lightweight workloads.
-export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
+// Free-first automatic routing. Paid/credit-dependent providers remain
+// available through explicit forceProvider but are not part of automatic
+// failover, so a quota problem in a free provider cannot silently turn into
+// paid inference.
+export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'gemini',
-  'anthropic',
-  'deepseek',
-  'cerebras',
   'groq',
-  'mistral',
-  'kimi',
-  'together',
   'openrouter',
-  'openai',
-  'huggingface',
-  'nebius',
-  'fireworks',
-  'sambanova',
-  'novita',
-  'nvidia',
+  'cerebras',
+  'mistral',
   'cloudflare',
-  'aimlapi',
-  'baseten',
-  'modelscope',
-  'inference',
 ];
 
-// Task-based routing preferences. The router tries these providers first,
-// in order, before falling back to DEFAULT_FAILOVER_ORDER for anything not
-// already tried.
+// OpenRouter is placed immediately after the direct high-capacity free
+// providers because openrouter/free dynamically distributes work across its
+// currently available free model pool. This complements, rather than
+// replaces, independent provider quotas.
+export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
+  'gemini',
+  'openrouter',
+  'groq',
+  'cerebras',
+  'mistral',
+  'cloudflare',
+];
+
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
-  coding: ['deepseek', 'anthropic', 'mistral', 'kimi', 'gemini', 'openai', 'openrouter'],
-  reasoning: ['deepseek', 'anthropic', 'openai', 'gemini'],
-  creative: ['gemini', 'openai', 'anthropic'],
-  fast: ['cerebras', 'groq', 'together', 'gemini'],
-  cheap: ['gemini', 'deepseek', 'cerebras', 'together', 'groq', 'openrouter', 'huggingface'],
-  'large-context': ['kimi', 'gemini', 'anthropic', 'openai'],
+  coding: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'cloudflare'],
+  reasoning: ['openrouter', 'gemini', 'groq', 'cerebras', 'mistral', 'cloudflare'],
+  creative: ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare'],
+  fast: ['groq', 'cerebras', 'gemini', 'openrouter', 'mistral', 'cloudflare'],
+  cheap: DEFAULT_FAILOVER_ORDER,
+  'large-context': ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare'],
   general: DEFAULT_FAILOVER_ORDER,
 };
 
-// Rough per-1K-token USD pricing for cost estimation/analytics. Approximate,
-// blended prompt+completion figures — meant for relative cost tracking, not
-// billing-grade accuracy. The gateway's Gemini default targets Google's
-// free-tier usage, so Gemini is explicitly reported as $0 here. This is not
-// billing-grade accounting for paid Gemini usage; if paid Gemini models are
-// added later, pricing should become model-aware instead of using a provider
-// wide constant.
+// These values are only used for relative analytics. Automatically routed
+// providers in FREE_AUTO_PROVIDERS must report $0 to make the free-only
+// policy visible in the gateway UI/analytics.
 export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   gemini: 0.0,
   anthropic: 0.003,
   openai: 0.0002,
-  groq: 0.0002,
+  groq: 0.0,
   together: 0.0002,
-  openrouter: 0.001,
+  openrouter: 0.0,
   huggingface: 0.0001,
   deepseek: 0.00021,
   kimi: 0.0018,
-  cerebras: 0.0001,
-  mistral: 0.0004,
+  cerebras: 0.0,
+  mistral: 0.0,
   cloudflare: 0.0,
   fireworks: 0.0002,
   inference: 0.0001,
@@ -77,11 +68,12 @@ export function buildProviderOrder(
   forceProvider: ProviderName | undefined
 ): ProviderName[] {
   if (forceProvider) {
-    const rest = DEFAULT_FAILOVER_ORDER.filter((p) => p !== forceProvider);
-    return [forceProvider, ...rest];
+    const rest = Object.values(TASK_ROUTING)
+      .flat()
+      .filter((p) => p !== forceProvider);
+    return [forceProvider, ...Array.from(new Set(rest))];
   }
 
   const preferred = TASK_ROUTING[taskType ?? 'general'];
-  const rest = DEFAULT_FAILOVER_ORDER.filter((p) => !preferred.includes(p));
-  return [...preferred, ...rest];
+  return Array.from(new Set(preferred));
 }
