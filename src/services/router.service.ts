@@ -5,7 +5,7 @@ import {
   ProviderResponse,
   StreamChunk,
 } from '../types';
-import { buildProviderOrder } from '../config/routing';
+import { buildProviderOrder, FREE_AUTO_PROVIDERS } from '../config/routing';
 import { getProvider, listConfiguredProviders } from '../providers/registry';
 import { retryWithBackoff } from '../utils/retry';
 import { env } from '../config/env';
@@ -20,7 +20,7 @@ export interface RouteResult {
 export class AllProvidersFailedError extends Error {
   public readonly attempts: { provider: ProviderName; error: string }[];
   constructor(attempts: { provider: ProviderName; error: string }[]) {
-    super('All configured providers failed to fulfill the request');
+    super('All eligible providers failed to fulfill the request');
     this.name = 'AllProvidersFailedError';
     this.attempts = attempts;
   }
@@ -39,38 +39,46 @@ function requestHasImages(request: ChatRequest): boolean {
 
 function candidateOrder(request: ChatRequest): ProviderName[] {
   const configured = new Set(listConfiguredProviders());
-  const order = buildProviderOrder(request.taskType, request.forceProvider).filter((p) =>
-    configured.has(p)
+
+  // Explicit selection is a deliberate manual escape hatch. It bypasses the
+  // automatic free-only pool and health ordering, but still requires a
+  // configured provider and never receives another provider as fallback.
+  if (request.forceProvider) {
+    if (!configured.has(request.forceProvider)) return [];
+    const adapter = getProvider(request.forceProvider);
+    if (requestHasImages(request) && !adapter.supportsVision) return [];
+    return [request.forceProvider];
+  }
+
+  // Automatic routing is strictly free-tier only. This is the final policy
+  // guard even if routing configuration is changed later.
+  const order = buildProviderOrder(request.taskType, undefined).filter(
+    (provider) => FREE_AUTO_PROVIDERS.includes(provider) && configured.has(provider)
   );
 
   const eligible = requestHasImages(request)
     ? order.filter((p) => getProvider(p).supportsVision)
     : order;
 
-  // Keep rate-limited/down providers out of the hot path. The routing config
-  // remains the source of truth for ordering, and unhealthy providers can
-  // still be retried after the healthy candidates if everything else fails.
-  const healthy = eligible.filter((p) => isLikelyHealthy(p));
-  const degraded = eligible.filter((p) => !isLikelyHealthy(p));
-  return [...healthy, ...degraded];
+  // Providers cooling down after 429/quota failures are removed completely
+  // from this request. This prevents retry loops from consuming scarce free
+  // capacity while keeping healthier free providers available.
+  return eligible.filter((p) => isLikelyHealthy(p));
 }
 
 function modelForProvider(request: ChatRequest, providerName: ProviderName): string | undefined {
-  return request.forceProvider && providerName === request.forceProvider ? request.model : undefined;
+  return request.forceProvider === providerName ? request.model : undefined;
 }
 
-/**
- * Runs a non-streaming chat request through the free-first failover chain.
- * Automatic routing never falls through to a paid/credit-dependent provider;
- * explicit forceProvider remains available for manual provider selection.
- */
 export async function routeChat(request: ChatRequest, correlationId?: string): Promise<RouteResult> {
   const order = candidateOrder(request);
   if (order.length === 0) {
     throw new Error(
-      requestHasImages(request)
-        ? 'No vision-capable free providers are configured. Set a free-tier provider API key such as GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, CEREBRAS_API_KEY, MISTRAL_API_KEY, or the required Cloudflare credentials.'
-        : 'No free automatic providers are configured. Set at least one free-tier provider API key.'
+      request.forceProvider
+        ? `Forced provider "${request.forceProvider}" is not configured or cannot handle this request.`
+        : requestHasImages(request)
+          ? 'No vision-capable free providers are currently available.'
+          : 'No free automatic providers are currently available.'
     );
   }
 
@@ -140,9 +148,11 @@ export async function routeChatStream(
   const order = candidateOrder(request);
   if (order.length === 0) {
     throw new Error(
-      requestHasImages(request)
-        ? 'No vision-capable free providers are configured. Set a free-tier provider API key.'
-        : 'No free automatic providers are configured. Set at least one free-tier provider API key.'
+      request.forceProvider
+        ? `Forced provider "${request.forceProvider}" is not configured or cannot handle this request.`
+        : requestHasImages(request)
+          ? 'No vision-capable free providers are currently available.'
+          : 'No free automatic providers are currently available.'
     );
   }
 
@@ -187,9 +197,7 @@ export async function routeChatStream(
       recordFailure(providerName, pErr?.code ?? 'UNKNOWN', (err as Error).message, correlationId);
       failures.push({ provider: providerName, error: (err as Error).message });
 
-      if (emittedAnyChunk) {
-        throw new AllProvidersFailedError(failures);
-      }
+      if (emittedAnyChunk) throw new AllProvidersFailedError(failures);
 
       logger.warn('Provider failed before streaming began, attempting failover', {
         correlationId,
