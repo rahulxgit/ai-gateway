@@ -114,9 +114,6 @@ export class ProviderError extends Error {
     this.provider = provider;
     this.code = code;
     this.statusCode = statusCode;
-    // Rate-limit and quota failures are intentionally non-retryable against
-    // the same provider. The router should immediately move to another free
-    // provider instead of consuming more scarce quota.
     this.retryable = ![
       'RATE_LIMITED',
       'QUOTA_EXCEEDED',
@@ -143,6 +140,7 @@ export interface ProviderAdapterOptions {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  signal?: AbortSignal;
 }
 
 export interface ProviderAdapter {
