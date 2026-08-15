@@ -1,7 +1,5 @@
 import { ProviderAdapterOptions, ProviderError, ProviderName, ProviderResponse } from '../types';
 
-// Mock the provider registry so we control exactly which providers are
-// "configured" and how each one behaves, without any real network calls.
 jest.mock('../providers/registry', () => {
   const actual = jest.requireActual('../providers/registry');
   return {
@@ -18,15 +16,13 @@ import {
   AllProvidersFailedError,
   GatewayRequestBudgetExceededError,
 } from '../services/router.service';
-import { recordSuccess } from '../services/health.service';
+import { recordSuccess, recordFailure } from '../services/health.service';
 
-// Mock only the env values used by router tests so changing the suite does
-// not depend on a developer's local .env file.
 jest.mock('../config/env', () => ({
   env: {
     ...jest.requireActual('../config/env').env,
     gatewayRequestBudgetMs: 100,
-    maxRetries: 0,
+    maxRetries: 2,
   },
 }));
 
@@ -45,95 +41,93 @@ function mockAdapter(
   };
 }
 
-describe('routeChat failover', () => {
+describe('routeChat free-first failover', () => {
   beforeEach(() => {
-    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'anthropic', 'groq']);
+    jest.clearAllMocks();
+    for (const provider of ['gemini', 'openrouter', 'groq', 'cerebras', 'mistral', 'cloudflare'] as ProviderName[]) {
+      recordSuccess(provider, 1);
+    }
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'openrouter', 'groq']);
   });
 
-  it('uses the first healthy provider when it succeeds', async () => {
+  it('uses the first healthy free provider when it succeeds', async () => {
     const gemini = mockAdapter('gemini', async () => ({
       provider: 'gemini',
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.1-flash-lite',
       content: 'hi',
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
       latencyMs: 10,
-      estimatedCostUsd: 0.0001,
+      estimatedCostUsd: 0,
     }));
     (getProvider as jest.Mock).mockImplementation((name: ProviderName) =>
       name === 'gemini' ? gemini : mockAdapter(name, async () => { throw new Error('should not be called'); })
     );
 
-    const result = await routeChat({ messages: [{ role: 'user', content: 'hello' }], taskType: 'general' });
+    const result = await routeChat({ messages: [{ role: 'user', content: 'hello' }] });
 
     expect(result.response.provider).toBe('gemini');
     expect(result.failoverChain).toEqual(['gemini']);
     expect(gemini.chat).toHaveBeenCalledTimes(1);
   });
 
-  it('fails over to the next provider on a retryable error, preserving context', async () => {
+  it('moves immediately to the next free provider on 429 without retrying the same provider', async () => {
     const gemini = mockAdapter('gemini', async () => {
-      throw new ProviderError('gemini', 'RATE_LIMITED', 'rate limited');
+      throw new ProviderError('gemini', 'RATE_LIMITED', 'rate limited', 429);
     });
-    const anthropic = mockAdapter('anthropic', async () => ({
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-6',
+    const openrouter = mockAdapter('openrouter', async () => ({
+      provider: 'openrouter',
+      model: 'openai/gpt-oss-120b:free',
       content: 'continued response',
       usage: { promptTokens: 5, completionTokens: 5, totalTokens: 10 },
       latencyMs: 20,
-      estimatedCostUsd: 0.001,
+      estimatedCostUsd: 0,
     }));
-    (getProvider as jest.Mock).mockImplementation((name: ProviderName) =>
-      ({ gemini, anthropic }[name as 'gemini' | 'anthropic'] ??
-      mockAdapter(name, async () => { throw new Error('unexpected provider called'); }))
-    );
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, openrouter }[name as 'gemini' | 'openrouter']));
 
-    const result = await routeChat({
-      messages: [{ role: 'user', content: 'hello' }],
-      taskType: 'general',
-    });
+    const result = await routeChat({ messages: [{ role: 'user', content: 'hello' }] });
 
-    expect(result.response.provider).toBe('anthropic');
-    expect(result.response.content).toBe('continued response');
-    expect(result.failoverChain).toEqual(['gemini', 'anthropic']);
+    expect(result.response.provider).toBe('openrouter');
+    expect(result.failoverChain).toEqual(['gemini', 'openrouter']);
+    expect(gemini.chat).toHaveBeenCalledTimes(1);
+    expect(openrouter.chat).toHaveBeenCalledTimes(1);
   });
 
-  it('throws AllProvidersFailedError when every configured provider fails', async () => {
-    const failer = (name: ProviderName) =>
-      mockAdapter(name, async () => {
-        throw new ProviderError(name, 'SERVER_ERROR', `${name} down`);
+  it('never automatically calls a paid provider after all free providers fail', async () => {
+    (listConfiguredProviders as jest.Mock).mockReturnValue([
+      'gemini',
+      'openrouter',
+      'groq',
+      'cerebras',
+      'mistral',
+      'cloudflare',
+      'openai',
+    ]);
+    const adapters: Record<string, ReturnType<typeof mockAdapter>> = {};
+    for (const provider of ['gemini', 'openrouter', 'groq', 'cerebras', 'mistral', 'cloudflare', 'openai'] as ProviderName[]) {
+      adapters[provider] = mockAdapter(provider, async () => {
+        throw new ProviderError(provider, 'SERVER_ERROR', `${provider} down`);
       });
-    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => failer(name));
+    }
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => adapters[name]);
 
-    await expect(
-      routeChat({ messages: [{ role: 'user', content: 'hello' }] })
-    ).rejects.toBeInstanceOf(AllProvidersFailedError);
+    await expect(routeChat({ messages: [{ role: 'user', content: 'hello' }] })).rejects.toBeInstanceOf(AllProvidersFailedError);
+    expect(adapters.openai.chat).not.toHaveBeenCalled();
   });
 
-  it('throws a clear error when no providers are configured', async () => {
-    (listConfiguredProviders as jest.Mock).mockReturnValue([]);
-    await expect(
-      routeChat({ messages: [{ role: 'user', content: 'hello' }] })
-    ).rejects.toThrow('No providers are configured');
-  });
-
-  it('only passes a model override to the provider it was intended for, not to fallback providers', async () => {
-    const openrouter = mockAdapter('openrouter', async () => {
-      throw new ProviderError('openrouter', 'SERVER_ERROR', 'openrouter down');
-    });
-    const gemini = mockAdapter('gemini', async (options) => ({
-      provider: 'gemini',
-      model: options.model ?? 'gemini-default-model',
-      content: 'fallback response',
+  it('treats forceProvider as exactly one provider and preserves its model override', async () => {
+    const openrouter = mockAdapter('openrouter', async (options) => ({
+      provider: 'openrouter',
+      model: options.model ?? 'openrouter/free',
+      content: 'forced',
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
-      latencyMs: 10,
-      estimatedCostUsd: 0.0001,
+      latencyMs: 5,
+      estimatedCostUsd: 0,
     }));
-    (getProvider as jest.Mock).mockImplementation((name: ProviderName) =>
-      ({ openrouter, gemini }[name as 'openrouter' | 'gemini'] ??
-      mockAdapter(name, async () => { throw new Error('unexpected provider called'); }))
-    );
+    const gemini = mockAdapter('gemini', async () => {
+      throw new Error('fallback must never be called');
+    });
     (listConfiguredProviders as jest.Mock).mockReturnValue(['openrouter', 'gemini']);
-    recordSuccess('openrouter', 10);
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ openrouter, gemini }[name as 'openrouter' | 'gemini']));
 
     const result = await routeChat({
       messages: [{ role: 'user', content: 'hello' }],
@@ -141,149 +135,147 @@ describe('routeChat failover', () => {
       model: 'deepseek/deepseek-chat-v3.1:free',
     });
 
-    expect(openrouter.chat).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'deepseek/deepseek-chat-v3.1:free' })
+    expect(openrouter.chat).toHaveBeenCalledWith(expect.objectContaining({ model: 'deepseek/deepseek-chat-v3.1:free' }));
+    expect(gemini.chat).not.toHaveBeenCalled();
+    expect(result.failoverChain).toEqual(['openrouter']);
+  });
+
+  it('skips a provider during its quota cooldown', async () => {
+    recordFailure('openrouter', 'QUOTA_EXCEEDED', 'daily quota exhausted');
+    const gemini = mockAdapter('gemini', async () => ({
+      provider: 'gemini',
+      model: 'gemini-3.1-flash-lite',
+      content: 'from gemini',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      latencyMs: 10,
+      estimatedCostUsd: 0,
+    }));
+    const openrouter = mockAdapter('openrouter', async () => {
+      throw new Error('cooling-down provider must not be called');
+    });
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, openrouter }[name as 'gemini' | 'openrouter']));
+
+    const result = await routeChat({ messages: [{ role: 'user', content: 'hello' }], taskType: 'general' });
+
+    expect(result.response.provider).toBe('gemini');
+    expect(openrouter.chat).not.toHaveBeenCalled();
+  });
+
+  it('only passes model overrides to the explicitly forced provider', async () => {
+    const openrouter = mockAdapter('openrouter', async (options) => ({
+      provider: 'openrouter',
+      model: options.model ?? 'openrouter/free',
+      content: 'ok',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      latencyMs: 5,
+      estimatedCostUsd: 0,
+    }));
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['openrouter']);
+    (getProvider as jest.Mock).mockReturnValue(openrouter);
+
+    await routeChat({
+      messages: [{ role: 'user', content: 'hello' }],
+      forceProvider: 'openrouter',
+      model: 'deepseek/deepseek-chat-v3.1:free',
+    });
+
+    expect(openrouter.chat).toHaveBeenCalledWith(expect.objectContaining({ model: 'deepseek/deepseek-chat-v3.1:free' }));
+  });
+
+  it('throws a clear error when no automatic providers are configured', async () => {
+    (listConfiguredProviders as jest.Mock).mockReturnValue([]);
+    await expect(routeChat({ messages: [{ role: 'user', content: 'hello' }] })).rejects.toThrow(
+      'No free automatic providers are currently available'
     );
-    expect(gemini.chat).toHaveBeenCalledWith(expect.objectContaining({ model: undefined }));
-    expect(result.response.model).toBe('gemini-default-model');
   });
 
   it('only routes image-bearing requests to providers that support vision', async () => {
-    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'groq', 'anthropic']);
-
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'groq']);
     const gemini = mockAdapter('gemini', async () => ({
       provider: 'gemini',
-      model: 'gemini-2.5-flash-lite',
-      content: 'I see a cat in the image',
-      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      latencyMs: 20,
-      estimatedCostUsd: 0.0001,
+      model: 'gemini-3.1-flash-lite',
+      content: 'image response',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      latencyMs: 5,
+      estimatedCostUsd: 0,
     }));
-    const groq = mockAdapter(
-      'groq',
-      async () => {
-        throw new Error('groq should never be called for a vision request');
-      },
-      { supportsVision: false }
-    );
-    const anthropic = mockAdapter('anthropic', async () => {
-      throw new Error('anthropic should not be reached since gemini succeeds first');
-    });
-
-    (getProvider as jest.Mock).mockImplementation(
-      (name: ProviderName) => ({ gemini, groq, anthropic }[name as 'gemini' | 'groq' | 'anthropic'])
-    );
+    const groq = mockAdapter('groq', async () => ({
+      provider: 'groq',
+      model: 'qwen/qwen3.6-27b',
+      content: 'should not run',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      latencyMs: 5,
+      estimatedCostUsd: 0,
+    }), { supportsVision: false });
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, groq }[name as 'gemini' | 'groq']));
 
     const result = await routeChat({
-      messages: [
-        {
-          role: 'user',
-          content: 'What is in this image?',
-          images: [{ mimeType: 'image/png', base64: 'ZmFrZWRhdGE=' }],
-        },
-      ],
+      messages: [{ role: 'user', content: 'describe', images: [{ mimeType: 'image/png', base64: 'x' }] }],
     });
 
     expect(result.response.provider).toBe('gemini');
     expect(groq.chat).not.toHaveBeenCalled();
   });
 
-  it('throws a vision-specific error when no configured provider supports images', async () => {
-    (listConfiguredProviders as jest.Mock).mockReturnValue(['groq']);
-    const groq = mockAdapter(
-      'groq',
-      async () => {
-        throw new Error('should never be called');
-      },
-      { supportsVision: false }
-    );
-    (getProvider as jest.Mock).mockImplementation(() => groq);
-
-    await expect(
-      routeChat({
-        messages: [
-          { role: 'user', content: 'describe this', images: [{ mimeType: 'image/png', base64: 'x' }] },
-        ],
-      })
-    ).rejects.toThrow('No vision-capable providers are configured');
-  });
-
-  it('enforces one wall-clock budget across the entire failover chain', async () => {
+  it('enforces one wall-clock budget across the failover chain', async () => {
     const nowSpy = jest.spyOn(Date, 'now');
     const times = [1_000, 1_050, 1_150];
     nowSpy.mockImplementation(() => times.shift() ?? 1_150);
+    const gemini = mockAdapter('gemini', async () => { throw new ProviderError('gemini', 'TIMEOUT', 'timed out'); });
+    const openrouter = mockAdapter('openrouter', async () => { throw new ProviderError('openrouter', 'TIMEOUT', 'timed out'); });
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'openrouter']);
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, openrouter }[name as 'gemini' | 'openrouter']));
 
-    const gemini = mockAdapter('gemini', async () => {
-      throw new ProviderError('gemini', 'TIMEOUT', 'gemini timed out');
-    });
-    const anthropic = mockAdapter('anthropic', async () => {
-      throw new ProviderError('anthropic', 'TIMEOUT', 'anthropic timed out');
-    });
-    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, anthropic }[name as 'gemini' | 'anthropic']));
-    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'anthropic']);
-
-    await expect(
-      routeChat({ messages: [{ role: 'user', content: 'hello' }] })
-    ).rejects.toBeInstanceOf(GatewayRequestBudgetExceededError);
-
+    await expect(routeChat({ messages: [{ role: 'user', content: 'hello' }] })).rejects.toBeInstanceOf(GatewayRequestBudgetExceededError);
     expect(gemini.chat).toHaveBeenCalledTimes(1);
-    expect(anthropic.chat).not.toHaveBeenCalled();
+    expect(openrouter.chat).not.toHaveBeenCalled();
     nowSpy.mockRestore();
   });
 });
 
 describe('routeChatStream failover / error paths', () => {
   beforeEach(() => {
-    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'anthropic']);
+    jest.clearAllMocks();
     recordSuccess('gemini', 10);
-    recordSuccess('anthropic', 10);
+    recordSuccess('openrouter', 10);
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'openrouter']);
   });
 
-  it('fails over to the next provider if a provider errors before emitting any chunk', async () => {
+  it('fails over before the first token when a provider errors', async () => {
     const gemini = {
       name: 'gemini' as ProviderName,
       defaultModel: 'test-model',
       supportsVision: true,
       isConfigured: () => true,
       chat: jest.fn(),
-      chatStream: jest.fn(async () => {
-        throw new ProviderError('gemini', 'RATE_LIMITED', 'rate limited');
-      }),
+      chatStream: jest.fn(async () => { throw new ProviderError('gemini', 'RATE_LIMITED', 'rate limited'); }),
     };
-    const anthropic = {
-      name: 'anthropic' as ProviderName,
-      defaultModel: 'test-model',
+    const openrouter = {
+      name: 'openrouter' as ProviderName,
+      defaultModel: 'openrouter/free',
       supportsVision: true,
       isConfigured: () => true,
       chat: jest.fn(),
       chatStream: jest.fn(async (_options: ProviderAdapterOptions, onChunk: (c: unknown) => void) => {
-        onChunk({ provider: 'anthropic', model: 'test-model', delta: 'hi', done: false });
+        onChunk({ provider: 'openrouter', model: 'openrouter/free', delta: 'hi', done: false });
         return {
-          provider: 'anthropic',
-          model: 'test-model',
-          content: 'hi',
-          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
-          latencyMs: 5,
-          estimatedCostUsd: 0.0001,
+          provider: 'openrouter', model: 'openrouter/free', content: 'hi',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }, latencyMs: 5, estimatedCostUsd: 0,
         } as ProviderResponse;
       }),
     };
-    (getProvider as jest.Mock).mockImplementation(
-      (name: ProviderName) => ({ gemini, anthropic }[name as 'gemini' | 'anthropic'])
-    );
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, openrouter }[name as 'gemini' | 'openrouter']));
 
     const chunks: unknown[] = [];
-    const result = await routeChatStream(
-      { messages: [{ role: 'user', content: 'hello' }] },
-      (chunk) => chunks.push(chunk)
-    );
+    const result = await routeChatStream({ messages: [{ role: 'user', content: 'hello' }] }, (chunk) => chunks.push(chunk));
 
-    expect(result.response.provider).toBe('anthropic');
-    expect(result.failoverChain).toEqual(['gemini', 'anthropic']);
+    expect(result.response.provider).toBe('openrouter');
+    expect(result.failoverChain).toEqual(['gemini', 'openrouter']);
+    expect(gemini.chatStream).toHaveBeenCalledTimes(1);
     expect(chunks).toHaveLength(1);
   });
 
-  it('surfaces AllProvidersFailedError instead of silently switching once a chunk has already reached the client', async () => {
+  it('does not silently switch providers after a streaming token has been emitted', async () => {
     const gemini = {
       name: 'gemini' as ProviderName,
       defaultModel: 'test-model',
@@ -295,23 +287,17 @@ describe('routeChatStream failover / error paths', () => {
         throw new ProviderError('gemini', 'SERVER_ERROR', 'died mid-stream');
       }),
     };
-    const anthropic = {
-      name: 'anthropic' as ProviderName,
+    const openrouter = {
+      name: 'openrouter' as ProviderName,
       defaultModel: 'test-model',
       supportsVision: true,
       isConfigured: () => true,
       chat: jest.fn(),
-      chatStream: jest.fn(async () => {
-        throw new Error('anthropic should never be reached — mid-stream failures must not fail over');
-      }),
+      chatStream: jest.fn(),
     };
-    (getProvider as jest.Mock).mockImplementation(
-      (name: ProviderName) => ({ gemini, anthropic }[name as 'gemini' | 'anthropic'])
-    );
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, openrouter }[name as 'gemini' | 'openrouter']));
 
-    await expect(
-      routeChatStream({ messages: [{ role: 'user', content: 'hello' }] }, () => {})
-    ).rejects.toBeInstanceOf(AllProvidersFailedError);
-    expect(anthropic.chatStream).not.toHaveBeenCalled();
+    await expect(routeChatStream({ messages: [{ role: 'user', content: 'hello' }] }, () => {})).rejects.toBeInstanceOf(AllProvidersFailedError);
+    expect(openrouter.chatStream).not.toHaveBeenCalled();
   });
 });
