@@ -34,9 +34,7 @@ export function recordSuccess(provider: ProviderName, latencyMs: number, correla
   s.lastError = undefined;
   s.recentLatencies.push(latencyMs);
   if (s.recentLatencies.length > LATENCY_WINDOW) s.recentLatencies.shift();
-  s.avgLatencyMs = Math.round(
-    s.recentLatencies.reduce((a, b) => a + b, 0) / s.recentLatencies.length
-  );
+  s.avgLatencyMs = Math.round(s.recentLatencies.reduce((a, b) => a + b, 0) / s.recentLatencies.length);
   s.status = s.avgLatencyMs > DEGRADED_LATENCY_MS ? 'degraded' : 'healthy';
   logger.debug('Provider health recorded success', { correlationId, provider, latencyMs, status: s.status });
 }
@@ -60,10 +58,13 @@ export function recordFailure(
     s.cooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
   } else if (errorCode === 'ACCOUNT_SUSPENDED' || errorCode === 'INSUFFICIENT_CREDITS') {
     s.status = 'down';
+    s.cooldownUntil = undefined;
   } else if (s.consecutiveFailures >= DOWN_AFTER_FAILURES) {
     s.status = 'down';
+    s.cooldownUntil = undefined;
   } else {
     s.status = 'degraded';
+    s.cooldownUntil = undefined;
   }
 
   logger.warn('Provider health recorded failure', {
@@ -85,14 +86,13 @@ export function getHealthSnapshot(): ProviderHealth[] {
   });
 }
 
-/**
- * Returns true when a provider is eligible for the current routing attempt.
- * Rate-limited/quota-exhausted providers stay out of the hot path until the
- * cooldown expires; a successful request clears the cooldown immediately.
- */
+/** Returns whether a provider can participate in the current routing attempt. */
 export function isLikelyHealthy(provider: ProviderName): boolean {
   const s = state[provider];
   if (s.status === 'down') return false;
   if (s.cooldownUntil && Date.now() < s.cooldownUntil) return false;
-  return s.status !== 'rate_limited';
+  // A rate-limited provider becomes eligible again after its cooldown. The
+  // next request will either restore it through recordSuccess or start a new
+  // cooldown if the provider is still limited.
+  return true;
 }
