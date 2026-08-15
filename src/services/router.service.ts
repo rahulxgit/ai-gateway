@@ -7,7 +7,6 @@ import {
 } from '../types';
 import { buildProviderOrder, FREE_AUTO_PROVIDERS } from '../config/routing';
 import { getProvider, listConfiguredProviders } from '../providers/registry';
-import { retryWithBackoff } from '../utils/retry';
 import { env } from '../config/env';
 import { logger, failoverLogger } from '../utils/logger';
 import { recordSuccess, recordFailure, isLikelyHealthy } from './health.service';
@@ -40,9 +39,6 @@ function requestHasImages(request: ChatRequest): boolean {
 function candidateOrder(request: ChatRequest): ProviderName[] {
   const configured = new Set(listConfiguredProviders());
 
-  // Explicit selection is a deliberate manual escape hatch. It bypasses the
-  // automatic free-only pool and health ordering, but still requires a
-  // configured provider and never receives another provider as fallback.
   if (request.forceProvider) {
     if (!configured.has(request.forceProvider)) return [];
     const adapter = getProvider(request.forceProvider);
@@ -50,8 +46,6 @@ function candidateOrder(request: ChatRequest): ProviderName[] {
     return [request.forceProvider];
   }
 
-  // Automatic routing is strictly free-tier only. This is the final policy
-  // guard even if routing configuration is changed later.
   const order = buildProviderOrder(request.taskType, undefined).filter(
     (provider) => FREE_AUTO_PROVIDERS.includes(provider) && configured.has(provider)
   );
@@ -60,9 +54,6 @@ function candidateOrder(request: ChatRequest): ProviderName[] {
     ? order.filter((p) => getProvider(p).supportsVision)
     : order;
 
-  // Providers cooling down after 429/quota failures are removed completely
-  // from this request. This prevents retry loops from consuming scarce free
-  // capacity while keeping healthier free providers available.
   return eligible.filter((p) => isLikelyHealthy(p));
 }
 
@@ -70,12 +61,66 @@ function modelForProvider(request: ChatRequest, providerName: ProviderName): str
   return request.forceProvider === providerName ? request.model : undefined;
 }
 
+function retryDelayMs(retryNumber: number): number {
+  const jitter = Math.random() * 100;
+  return Math.min(400 * 2 ** (retryNumber - 1) + jitter, 8_000);
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Executes one provider request within the gateway's global deadline.
+ * Rate-limit/quota errors intentionally bypass same-provider retries because
+ * retries can consume scarce free-tier capacity without increasing success.
+ */
+async function callWithBudget<T>(
+  fn: () => Promise<T>,
+  deadline: number
+): Promise<T> {
+  for (let retryNumber = 0; ; retryNumber += 1) {
+    const remainingBudgetMs = deadline - Date.now();
+    if (remainingBudgetMs <= 0) throw new GatewayRequestBudgetExceededError();
+
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise<T>((_, reject) => {
+          setTimeout(() => reject(new GatewayRequestBudgetExceededError()), remainingBudgetMs);
+        }),
+      ]);
+    } catch (err) {
+      if (err instanceof GatewayRequestBudgetExceededError) throw err;
+
+      const pErr = err instanceof ProviderError ? err : undefined;
+      const retryable = pErr?.retryable ?? true;
+      const blockedByQuota = pErr?.code === 'RATE_LIMITED' || pErr?.code === 'QUOTA_EXCEEDED';
+
+      if (!retryable || blockedByQuota || retryNumber >= env.maxRetries) throw err;
+
+      const delayMs = retryDelayMs(retryNumber + 1);
+      const afterDelayRemainingMs = deadline - Date.now() - delayMs;
+      if (afterDelayRemainingMs <= 0) throw new GatewayRequestBudgetExceededError();
+
+      logger.warn('Retrying provider within gateway request budget', {
+        provider: pErr?.provider,
+        retryNumber: retryNumber + 1,
+        maxRetries: env.maxRetries,
+        delayMs: Math.round(delayMs),
+        remainingBudgetMs: Math.max(0, Math.round(deadline - Date.now())),
+      });
+      await sleep(delayMs);
+    }
+  }
+}
+
 export async function routeChat(request: ChatRequest, correlationId?: string): Promise<RouteResult> {
   const order = candidateOrder(request);
   if (order.length === 0) {
     throw new Error(
       request.forceProvider
-        ? `Forced provider "${request.forceProvider}" is not configured or cannot handle this request.`
+        ? `Forced provider \"${request.forceProvider}\" is not configured or cannot handle this request.`
         : requestHasImages(request)
           ? 'No vision-capable free providers are currently available.'
           : 'No free automatic providers are currently available.'
@@ -87,28 +132,22 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
   const deadline = Date.now() + env.gatewayRequestBudgetMs;
 
   for (const providerName of order) {
-    const remainingBudgetMs = deadline - Date.now();
-    if (remainingBudgetMs <= 0) throw new GatewayRequestBudgetExceededError();
+    if (deadline - Date.now() <= 0) throw new GatewayRequestBudgetExceededError();
 
     attempted.push(providerName);
     const adapter = getProvider(providerName);
     const model = modelForProvider(request, providerName);
 
     try {
-      const response = await retryWithBackoff(
+      const response = await callWithBudget(
         () =>
-          Promise.race([
-            adapter.chat({
-              messages: request.messages,
-              model,
-              temperature: request.temperature,
-              maxTokens: request.maxTokens,
-            }),
-            new Promise<ProviderResponse>((_, reject) => {
-              setTimeout(() => reject(new GatewayRequestBudgetExceededError()), remainingBudgetMs);
-            }),
-          ]),
-        { maxRetries: env.maxRetries }
+          adapter.chat({
+            messages: request.messages,
+            model,
+            temperature: request.temperature,
+            maxTokens: request.maxTokens,
+          }),
+        deadline
       );
 
       recordSuccess(providerName, response.latencyMs, correlationId);
@@ -149,7 +188,7 @@ export async function routeChatStream(
   if (order.length === 0) {
     throw new Error(
       request.forceProvider
-        ? `Forced provider "${request.forceProvider}" is not configured or cannot handle this request.`
+        ? `Forced provider \"${request.forceProvider}\" is not configured or cannot handle this request.`
         : requestHasImages(request)
           ? 'No vision-capable free providers are currently available.'
           : 'No free automatic providers are currently available.'
@@ -161,8 +200,7 @@ export async function routeChatStream(
   const deadline = Date.now() + env.gatewayRequestBudgetMs;
 
   for (const providerName of order) {
-    const remainingBudgetMs = deadline - Date.now();
-    if (remainingBudgetMs <= 0) throw new GatewayRequestBudgetExceededError();
+    if (deadline - Date.now() <= 0) throw new GatewayRequestBudgetExceededError();
 
     attempted.push(providerName);
     const adapter = getProvider(providerName);
@@ -184,7 +222,8 @@ export async function routeChatStream(
           }
         ),
         new Promise<ProviderResponse>((_, reject) => {
-          setTimeout(() => reject(new GatewayRequestBudgetExceededError()), remainingBudgetMs);
+          const remainingBudgetMs = deadline - Date.now();
+          setTimeout(() => reject(new GatewayRequestBudgetExceededError()), Math.max(0, remainingBudgetMs));
         }),
       ]);
 
