@@ -16,10 +16,6 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'openrouter',
   'openai',
   'huggingface',
-  // Newly added free/free-tier providers. Appended at the end of the
-  // default chain (rather than interleaved) so existing routing behavior
-  // and task preferences for all previously-supported providers are
-  // completely unchanged; these only get tried after the original list.
   'nebius',
   'fireworks',
   'sambanova',
@@ -47,11 +43,13 @@ export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
 
 // Rough per-1K-token USD pricing for cost estimation/analytics. Approximate,
 // blended prompt+completion figures — meant for relative cost tracking, not
-// billing-grade accuracy. Gemini's free-tier pricing is zero for supported
-// free-tier usage, but actual rate limits are dynamic and must not be encoded
-// here; Google exposes the active RPM/TPM/RPD limits in AI Studio.
+// billing-grade accuracy. The gateway's Gemini default targets Google's
+// free-tier usage, so Gemini is explicitly reported as $0 here. This is not
+// billing-grade accounting for paid Gemini usage; if paid Gemini models are
+// added later, pricing should become model-aware instead of using a provider
+// wide constant.
 export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
-  gemini: 0.0009,
+  gemini: 0.0,
   anthropic: 0.003,
   openai: 0.0002,
   groq: 0.0002,
