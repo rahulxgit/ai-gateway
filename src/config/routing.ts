@@ -41,7 +41,7 @@ export const FREE_MODEL_IDS: Partial<Record<ProviderName, string[]>> = {
   groq: ['qwen/qwen3.6-27b'],
   cerebras: ['gpt-oss-120b'],
   mistral: ['mistral-small-latest'],
-  cloudflare: ['@cf/meta/llama-3.3-70b-instruct-fp8-fast'],
+  cloudflare: ['@cf/google/gemma-4-26b-a4b-it'],
 };
 
 export function isFreeModel(provider: ProviderName, model: string): boolean {
