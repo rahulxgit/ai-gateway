@@ -191,7 +191,7 @@ export async function orchestrateChat(
 
     saveMessage(session.id, 'assistant', response.content, response.provider, response.model);
 
-    recordAnalytics({
+    await recordAnalytics({
       sessionId: session.id,
       provider: response.provider,
       model: response.model,
@@ -229,7 +229,7 @@ export async function orchestrateChat(
   } catch (err) {
     if (err instanceof AllProvidersFailedError) {
       for (const attempt of err.attempts) {
-        recordAnalytics({
+        await recordAnalytics({
           sessionId: session.id,
           provider: attempt.provider,
           model: 'unknown',
@@ -276,7 +276,7 @@ export async function orchestrateChatStream(
 
     saveMessage(session.id, 'assistant', response.content, response.provider, response.model);
 
-    recordAnalytics({
+    await recordAnalytics({
       sessionId: session.id,
       provider: response.provider,
       model: response.model,

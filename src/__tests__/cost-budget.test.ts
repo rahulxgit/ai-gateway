@@ -15,8 +15,8 @@ afterEach(() => {
   env.dailyCostBudgetUsd = 0;
 });
 
-function insertCost(estimatedCostUsd: number): void {
-  recordAnalytics({
+async function insertCost(estimatedCostUsd: number): Promise<void> {
+  await recordAnalytics({
     provider: 'gemini',
     model: 'gemini-2.5-flash-lite',
     promptTokens: 10,
@@ -29,24 +29,24 @@ function insertCost(estimatedCostUsd: number): void {
 }
 
 describe('daily cost budget guard', () => {
-  it('does nothing when the budget is disabled', () => {
+  it('does nothing when the budget is disabled', async () => {
     env.dailyCostBudgetUsd = 0;
-    insertCost(100);
+    await insertCost(100);
 
     expect(() => enforceDailyCostBudget()).not.toThrow();
   });
 
-  it('allows requests while the rolling 24h cost is below the budget', () => {
+  it('allows requests while the rolling 24h cost is below the budget', async () => {
     env.dailyCostBudgetUsd = 10;
-    insertCost(9.99);
+    await insertCost(9.99);
 
     expect(() => enforceDailyCostBudget()).not.toThrow();
   });
 
-  it('throws a 429 budget error once the rolling 24h cost reaches the budget', () => {
+  it('throws a 429 budget error once the rolling 24h cost reaches the budget', async () => {
     env.dailyCostBudgetUsd = 10;
-    insertCost(6);
-    insertCost(4);
+    await insertCost(6);
+    await insertCost(4);
 
     expect(() => enforceDailyCostBudget()).toThrow(DailyCostBudgetExceededError);
     expect(() => enforceDailyCostBudget()).toThrow(

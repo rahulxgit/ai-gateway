@@ -46,13 +46,20 @@ const ANALYTICS_CACHE_TTL_MS = 5_000;
 let cachedSummary: AnalyticsSummary | null = null;
 let cachedAt = 0;
 
-export function invalidateAnalyticsCache(): void {
+export async function invalidateAnalyticsCache(): Promise<void> {
   cachedSummary = null;
   cachedAt = 0;
-  void deleteRedisCache(CACHE_KEYS.analyticsSummary);
+  // Awaited rather than fire-and-forget: recordAnalytics() calls this right
+  // after writing a new row, and a getAnalyticsSummary() call arriving
+  // immediately after could otherwise still read a stale L2 Redis value if
+  // the delete hadn't completed yet. The in-process L1 cache above is
+  // cleared synchronously either way; this only affects the Redis L2 path
+  // (CACHE_ENABLED=true), which is best-effort and already tolerant of
+  // failures via deleteRedisCache's own try/catch.
+  await deleteRedisCache(CACHE_KEYS.analyticsSummary);
 }
 
-export function recordAnalytics(input: {
+export async function recordAnalytics(input: {
   sessionId?: string | null;
   provider: ProviderName;
   model: string;
@@ -65,7 +72,7 @@ export function recordAnalytics(input: {
   success: boolean;
   errorCode?: string | null;
   failoverFrom?: ProviderName | null;
-}): void {
+}): Promise<void> {
   db.prepare(
     `INSERT INTO analytics
      (id, session_id, provider, model, task_type, prompt_tokens, completion_tokens, total_tokens,
@@ -88,7 +95,7 @@ export function recordAnalytics(input: {
     new Date().toISOString()
   );
 
-  invalidateAnalyticsCache();
+  await invalidateAnalyticsCache();
 }
 
 function get24hWindowStart(): string {
