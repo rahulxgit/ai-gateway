@@ -95,7 +95,8 @@ export function patchUserPreference(req: Request, res: Response) {
 export function putFile(req: Request, res: Response) {
   const { path: filePath, content, provider, diffSummary } = req.body ?? {};
   if (!filePath || typeof content !== 'string') {
-    { res.status(400).json({ error: 'path and content are required' }); return; }
+    res.status(400).json({ error: 'path and content are required' });
+    return;
   }
   const file = workspace.writeFile(
     req.params.id,
