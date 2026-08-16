@@ -11,7 +11,9 @@ export default {
         canvas: '#0E0F12',
         panel: '#16181C',
         'panel-raised': '#1C1F24',
+        'panel-overlay': '#20232A',
         hairline: '#282B31',
+        'hairline-soft': '#1F2126',
         ink: '#E8E6E1',
         'ink-muted': '#8B8F98',
         'ink-faint': '#54585F',
@@ -27,6 +29,13 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+      },
+      boxShadow: {
+        panel: '0 1px 0 rgba(255,255,255,0.02) inset, 0 12px 40px -12px rgba(0,0,0,0.45)',
+        floating: '0 20px 60px -18px rgba(0,0,0,0.55)',
+      },
+      borderRadius: {
+        xl2: '1.25rem',
       },
     },
   },
