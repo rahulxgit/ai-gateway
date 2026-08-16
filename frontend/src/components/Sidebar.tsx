@@ -64,7 +64,7 @@ export function Sidebar({
                 onNewChat();
                 onClose();
               }}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-signal-dim/60 bg-signal/10 px-3 py-2.5 text-sm font-semibold text-signal transition hover:bg-signal/15 active:scale-[0.99]"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-signal-dim/60 bg-signal/10 px-3 py-2.5 text-sm font-semibold text-signal shadow-sm transition duration-150 ease-out hover:bg-signal/15 hover:shadow-md active:scale-[0.98]"
             >
               <span className="text-lg leading-none">+</span>
               New chat

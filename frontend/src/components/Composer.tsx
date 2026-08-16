@@ -84,7 +84,7 @@ export function Composer({
   const wordCount = value.trim() ? value.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-hairline bg-panel shadow-[0_10px_40px_rgba(0,0,0,0.18)] transition focus-within:border-signal-dim/80 focus-within:shadow-[0_12px_50px_rgba(0,0,0,0.24)]">
+    <div className="overflow-hidden rounded-2xl border border-hairline bg-panel shadow-panel transition duration-150 focus-within:border-signal-dim/80 focus-within:shadow-floating">
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 border-b border-hairline/80 bg-panel-raised/30 px-3 py-2.5">
           {attachments.map((attachment) => {
@@ -92,7 +92,7 @@ export function Composer({
             return (
               <div
                 key={attachment.id}
-                className={`flex max-w-full items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs ${
+                className={`flex max-w-full items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs shadow-sm transition duration-150 ${
                   attachment.status === 'error'
                     ? 'border-danger/30 bg-danger/10 text-danger'
                     : attachment.status === 'uploading'
@@ -175,7 +175,7 @@ export function Composer({
           type="button"
           onClick={submit}
           disabled={!canSend}
-          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-signal px-4 text-sm font-semibold text-canvas shadow-sm transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-panel-raised disabled:text-ink-faint disabled:shadow-none"
+          className="btn-primary h-10 shrink-0 px-4 text-sm"
         >
           <span className="hidden sm:inline">Send</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">

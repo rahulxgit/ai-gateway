@@ -129,7 +129,7 @@ export default function App() {
     <div className="flex h-[100dvh] min-h-0 overflow-hidden bg-canvas text-ink selection:bg-signal-dim/40">
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 border-b border-hairline/80 bg-canvas/90 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-3 py-2.5 md:px-5 lg:px-6">
+          <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-3 py-3 md:px-5 lg:px-6">
             <div className="flex min-w-0 items-center gap-2.5">
               <button
                 type="button"
@@ -148,7 +148,8 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <span className="brand-mark" aria-hidden="true">AG</span>
                   <span className="truncate text-sm font-semibold tracking-tight text-ink">AI Gateway</span>
-                  <span className="hidden rounded-full border border-ok-dim/70 bg-ok/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ok sm:inline-flex">
+                  <span className="hidden items-center gap-1 rounded-full border border-ok-dim/70 bg-ok/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ok sm:inline-flex">
+                    <span className="h-1 w-1 rounded-full bg-ok" />
                     live
                   </span>
                 </div>
@@ -176,7 +177,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setShowAnalytics(true)}
-                className="rounded-lg border border-hairline bg-panel/70 px-2.5 py-1.5 font-mono text-[11px] text-ink-muted transition hover:border-signal-dim hover:bg-panel hover:text-ink"
+                className="rounded-lg border border-hairline bg-panel/70 px-3 py-1.5 font-mono text-[11px] text-ink-muted transition duration-150 hover:border-signal-dim hover:bg-panel hover:text-ink hover:shadow-sm"
               >
                 analytics
               </button>
@@ -200,10 +201,10 @@ export default function App() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-3 py-6 md:px-6 md:py-8 lg:px-8">
           <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
             {messages.length === 0 && (
-              <section className="relative overflow-hidden rounded-3xl border border-hairline bg-panel/55 px-5 py-10 shadow-[0_20px_80px_rgba(0,0,0,0.18)] md:px-10 md:py-14">
+              <section className="relative overflow-hidden rounded-3xl border border-hairline bg-panel/55 px-5 py-10 shadow-floating md:px-10 md:py-14">
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(240,163,57,0.10),transparent_38%),radial-gradient(circle_at_bottom_left,rgba(79,209,174,0.08),transparent_35%)]" />
                 <div className="relative mx-auto max-w-2xl text-center">
-                  <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-signal-dim/50 bg-signal/10 font-mono text-sm font-semibold text-signal shadow-[0_0_30px_rgba(240,163,57,0.10)]">
+                  <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-signal-dim/50 bg-gradient-to-br from-signal/20 to-signal/5 font-mono text-sm font-semibold text-signal shadow-[0_0_30px_rgba(240,163,57,0.12)]">
                     AG
                   </div>
                   <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ink-faint">route · retry · failover</p>
@@ -214,7 +215,7 @@ export default function App() {
                     Ask a question, attach a document or image, and let the gateway choose the best configured provider—switching automatically when a provider is slow, rate-limited, or unavailable.
                   </p>
 
-                  <div className="mt-7 grid gap-2 text-left sm:grid-cols-3">
+                  <div className="mt-7 grid gap-2.5 text-left sm:grid-cols-3">
                     {STARTER_PROMPTS.map((prompt) => (
                       <button
                         key={prompt}
@@ -230,7 +231,7 @@ export default function App() {
                             }
                           });
                         }}
-                        className="rounded-2xl border border-hairline bg-panel-raised/55 px-3.5 py-3 text-left text-xs leading-5 text-ink-muted transition hover:-translate-y-0.5 hover:border-signal-dim hover:bg-panel-raised hover:text-ink"
+                        className="rounded-2xl border border-hairline bg-panel-raised/55 px-3.5 py-3 text-left text-xs leading-5 text-ink-muted shadow-sm transition duration-150 ease-out hover:-translate-y-0.5 hover:border-signal-dim hover:bg-panel-raised hover:text-ink hover:shadow-panel"
                       >
                         {prompt}
                       </button>

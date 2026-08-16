@@ -39,7 +39,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           )}
 
           {message.content && (
-            <div className="max-w-[92%] rounded-2xl rounded-br-md bg-signal px-4 py-3 text-[15px] leading-6 text-canvas shadow-sm md:max-w-[78%]">
+            <div className="max-w-[92%] rounded-2xl rounded-br-md bg-signal px-4 py-3 text-[15px] leading-6 text-canvas shadow-[0_8px_24px_-8px_rgba(240,163,57,0.45)] md:max-w-[78%]">
               <p className="whitespace-pre-wrap break-words">{message.content}</p>
             </div>
           )}
@@ -50,7 +50,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="w-full max-w-3xl rounded-2xl border border-hairline bg-panel/75 px-4 py-4 text-[15px] leading-7 text-ink shadow-sm md:px-5">
+      <div className="w-full max-w-3xl rounded-2xl border border-hairline bg-panel/75 px-4 py-4 text-[15px] leading-7 text-ink shadow-panel md:px-5">
         <div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-faint">
           <span className="brand-mark h-5 w-5 rounded-md text-[8px]">AG</span>
           Assistant

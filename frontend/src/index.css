@@ -50,7 +50,7 @@
 
 @layer components {
   .icon-button {
-    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-hairline bg-panel/60 text-ink-muted transition duration-150 hover:border-signal-dim hover:bg-panel-raised hover:text-ink active:scale-[0.98];
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-hairline bg-panel/60 text-ink-muted transition duration-150 ease-out hover:border-signal-dim hover:bg-panel-raised hover:text-ink hover:shadow-sm active:scale-[0.96];
   }
 
   .icon-button-active {
@@ -58,11 +58,26 @@
   }
 
   .brand-mark {
-    @apply inline-flex h-7 w-7 items-center justify-center rounded-lg border border-signal-dim/60 bg-signal/10 font-mono text-[10px] font-bold tracking-tight text-signal;
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-lg border border-signal-dim/60 bg-gradient-to-br from-signal/25 to-signal/5 font-mono text-[10px] font-bold tracking-tight text-signal shadow-[0_0_16px_rgba(240,163,57,0.12)];
   }
 
   .surface-hover {
-    @apply transition duration-150 hover:border-hairline/90 hover:bg-panel-raised;
+    @apply transition duration-150 ease-out hover:border-hairline/90 hover:bg-panel-raised;
+  }
+
+  /* Shared "chip" style for pills, badges, and small status indicators —
+     centralizes what used to be repeated ad hoc across components. */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-hairline bg-panel-raised/70 px-2.5 py-1 text-[11px] font-medium text-ink-muted transition duration-150;
+  }
+
+  /* Primary call-to-action button used by Send / New chat / Create project. */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-signal font-semibold text-canvas shadow-sm transition duration-150 ease-out hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-panel-raised disabled:text-ink-faint disabled:shadow-none;
+  }
+
+  .card {
+    @apply rounded-2xl border border-hairline bg-panel/80 shadow-panel;
   }
 }
 
