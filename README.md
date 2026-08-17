@@ -25,7 +25,7 @@ Backend: https://ai-gateway-wx35.onrender.com
 
 ## Current capabilities
 
-- 21 configured provider adapters behind a shared `ProviderAdapter` interface.
+- 23 configured provider adapters behind a shared `ProviderAdapter` interface.
 - Task-aware routing and automatic provider failover.
 - Streaming chat support.
 - Conversation/session persistence in SQLite.
@@ -122,7 +122,7 @@ Official documentation:
 
 ## Supported providers
 
-The current registry contains 21 providers:
+The current registry contains 23 providers:
 
 1. OpenAI
 2. Gemini
@@ -145,6 +145,8 @@ The current registry contains 21 providers:
 19. Baseten
 20. ModelScope
 21. AI/ML API
+22. GitHub Models (free, no card, recurring daily quota)
+23. Cohere (free, no card, recurring monthly quota)
 
 Provider availability is configuration-driven: set a provider's API key (and Cloudflare's account ID where required) and the registry can expose it. `/providers` and `/health/models` reflect the providers configured in the running environment.
 
@@ -213,6 +215,8 @@ NOVITA_API_KEY=
 BASETEN_API_KEY=
 MODELSCOPE_API_KEY=
 AIMLAPI_API_KEY=
+GITHUB_MODELS_API_KEY=
+COHERE_API_KEY=
 ```
 
 Cloudflare Workers AI requires both `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`.

@@ -49,8 +49,9 @@ describe('GET /health', () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
-    // 11 original providers + 10 newly added free/free-tier providers.
-    expect(res.body.providers.length).toBe(21);
+    // 11 original providers + 10 free/free-tier providers + 2 genuinely
+    // free recurring-quota providers (GitHub Models, Cohere).
+    expect(res.body.providers.length).toBe(23);
   });
 });
 

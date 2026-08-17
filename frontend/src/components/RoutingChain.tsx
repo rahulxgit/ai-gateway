@@ -22,6 +22,8 @@ const LABELS: Record<ProviderName, string> = {
   baseten: 'baseten',
   modelscope: 'modelscope',
   aimlapi: 'aimlapi',
+  githubmodels: 'githubmodels',
+  cohere: 'cohere',
 };
 
 /**

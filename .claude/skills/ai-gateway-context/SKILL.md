@@ -21,9 +21,11 @@ src/
 frontend/        - Vite + React dashboard, separate package.json
 ```
 
-## The 21 providers
+## The 23 providers
 
-`gemini, anthropic, openai, groq, together, openrouter, huggingface, deepseek, kimi, cerebras, mistral, cloudflare, fireworks, inference, nebius, sambanova, nvidia, novita, baseten, modelscope, aimlapi`
+`gemini, anthropic, openai, groq, together, openrouter, huggingface, deepseek, kimi, cerebras, mistral, cloudflare, fireworks, inference, nebius, sambanova, nvidia, novita, baseten, modelscope, aimlapi, githubmodels, cohere`
+
+`githubmodels` and `cohere` are genuinely free, recurring-quota providers (daily/monthly reset, no card ever) — unlike most of the others in this list, which are one-time trial credits. Both are intentionally excluded from `FREE_AUTO_PROVIDERS` because their quotas (50-150 req/day, 1,000 req/month respectively) are too low for automatic retry/failover traffic — they're explicit-selection-only via `forceProvider`.
 
 Single source of truth is `src/providers/registry.ts`. **To add a new provider: write an adapter implementing the shared interface, instantiate it in the registry, add the name to the `ProviderName` union in `types/index.ts`, add it to `DEFAULT_FAILOVER_ORDER` and `PRICING_PER_1K_TOKENS` in `config/routing.ts`.** Nothing else needs to change — that's the whole point of the registry pattern. Don't special-case a new provider in the router.
 

@@ -73,6 +73,12 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   baseten: 0.0002,
   modelscope: 0.0001,
   aimlapi: 0.0002,
+  // Both genuinely free, recurring-quota providers (daily/monthly reset,
+  // no card) — see githubmodels.adapter.ts / cohere.adapter.ts comments.
+  // Kept at 0 rather than a nonzero estimate since neither has a paid
+  // per-token rate to fall back to on this tier.
+  githubmodels: 0,
+  cohere: 0,
 };
 
 export function buildProviderOrder(
