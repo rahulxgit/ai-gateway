@@ -2,7 +2,12 @@ import { ProviderName, TaskType } from '../types';
 
 // Free-first automatic routing. Paid/credit-dependent providers remain
 // available through explicit forceProvider but are never selected by the
-// automatic path.
+// automatic path. githubmodels/cohere are genuinely free with recurring
+// (not one-time) quotas and no billing risk, so they're included here too
+// — placed last in every order since their daily/monthly caps (50-150
+// req/day, 1,000 req/month respectively) are far lower than the other
+// five, so they're only reached as last-resort free fallbacks rather than
+// being hit on every request.
 export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'gemini',
   'openrouter',
@@ -10,6 +15,8 @@ export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'cerebras',
   'mistral',
   'cloudflare',
+  'githubmodels',
+  'cohere',
 ];
 
 export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
@@ -19,15 +26,17 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'cerebras',
   'mistral',
   'cloudflare',
+  'githubmodels',
+  'cohere',
 ];
 
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
-  coding: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'cloudflare'],
-  reasoning: ['openrouter', 'gemini', 'groq', 'cerebras', 'mistral', 'cloudflare'],
-  creative: ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare'],
-  fast: ['groq', 'cerebras', 'gemini', 'openrouter', 'mistral', 'cloudflare'],
+  coding: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'cloudflare', 'githubmodels', 'cohere'],
+  reasoning: ['openrouter', 'gemini', 'groq', 'cerebras', 'mistral', 'cloudflare', 'githubmodels', 'cohere'],
+  creative: ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'githubmodels', 'cohere'],
+  fast: ['groq', 'cerebras', 'gemini', 'openrouter', 'mistral', 'cloudflare', 'githubmodels', 'cohere'],
   cheap: DEFAULT_FAILOVER_ORDER,
-  'large-context': ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare'],
+  'large-context': ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'githubmodels', 'cohere'],
   general: DEFAULT_FAILOVER_ORDER,
 };
 
@@ -42,6 +51,8 @@ export const FREE_MODEL_IDS: Partial<Record<ProviderName, string[]>> = {
   cerebras: ['gpt-oss-120b'],
   mistral: ['mistral-small-latest'],
   cloudflare: ['@cf/google/gemma-4-26b-a4b-it'],
+  githubmodels: ['openai/gpt-4o-mini', 'openai/gpt-4o', 'meta/llama-3.3-70b-instruct'],
+  cohere: ['command-r7b-12-2024'],
 };
 
 export function isFreeModel(provider: ProviderName, model: string): boolean {

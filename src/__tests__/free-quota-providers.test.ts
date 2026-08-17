@@ -26,11 +26,28 @@ describe('genuinely free recurring-quota providers (GitHub Models, Cohere)', () 
     expect(PRICING_PER_1K_TOKENS.cohere).toBe(0);
   });
 
-  it('are excluded from automatic routing given their low recurring quotas', () => {
-    expect(FREE_AUTO_PROVIDERS).not.toContain('githubmodels');
-    expect(FREE_AUTO_PROVIDERS).not.toContain('cohere');
-    expect(DEFAULT_FAILOVER_ORDER).not.toContain('githubmodels');
-    expect(DEFAULT_FAILOVER_ORDER).not.toContain('cohere');
+  it('are included in automatic routing, ordered last given their lower recurring quotas', () => {
+    expect(FREE_AUTO_PROVIDERS).toContain('githubmodels');
+    expect(FREE_AUTO_PROVIDERS).toContain('cohere');
+    expect(DEFAULT_FAILOVER_ORDER).toContain('githubmodels');
+    expect(DEFAULT_FAILOVER_ORDER).toContain('cohere');
+
+    // Last-resort fallback ordering: both sit after every higher-quota
+    // free provider so they're only reached once those are exhausted.
+    const higherQuotaProviders: (typeof DEFAULT_FAILOVER_ORDER)[number][] = [
+      'gemini',
+      'openrouter',
+      'groq',
+      'cerebras',
+      'mistral',
+      'cloudflare',
+    ];
+    const githubmodelsIdx = DEFAULT_FAILOVER_ORDER.indexOf('githubmodels');
+    const cohereIdx = DEFAULT_FAILOVER_ORDER.indexOf('cohere');
+    for (const provider of higherQuotaProviders) {
+      expect(DEFAULT_FAILOVER_ORDER.indexOf(provider)).toBeLessThan(githubmodelsIdx);
+      expect(DEFAULT_FAILOVER_ORDER.indexOf(provider)).toBeLessThan(cohereIdx);
+    }
   });
 });
 
