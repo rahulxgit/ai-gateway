@@ -25,6 +25,8 @@ export const PROVIDER_NAMES = [
   'baseten',
   'modelscope',
   'aimlapi',
+  'githubmodels',
+  'cohere',
 ] as const;
 
 export type ProviderName = (typeof PROVIDER_NAMES)[number];

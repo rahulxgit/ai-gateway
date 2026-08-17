@@ -6,7 +6,7 @@
 
 ## What this is
 
-AI Gateway is a multi-LLM chat gateway with one HTTP API in front of 21 provider adapters. The backend runs as an Express/TypeScript service with SQLite persistence and an optional Redis L2 cache. A React frontend is deployed separately.
+AI Gateway is a multi-LLM chat gateway with one HTTP API in front of 23 provider adapters. The backend runs as an Express/TypeScript service with SQLite persistence and an optional Redis L2 cache. A React frontend is deployed separately.
 
 - **Repository:** https://github.com/rahulxgit/ai-gateway
 - **Frontend:** https://ai-gateway-alpha.vercel.app/
@@ -90,7 +90,7 @@ frontend/
 
 ## Provider registry
 
-There are 21 providers in the current registry:
+There are 23 providers in the current registry:
 
 1. OpenAI
 2. Gemini
@@ -113,6 +113,8 @@ There are 21 providers in the current registry:
 19. Baseten
 20. ModelScope
 21. AI/ML API
+22. GitHub Models (free, no card, recurring daily quota)
+23. Cohere (free, no card, recurring monthly quota)
 
 Use `src/providers/registry.ts` and `src/config/routing.ts` as the source of truth for provider registration and routing order. Do not maintain a separate hand-written provider list in middleware or API code.
 

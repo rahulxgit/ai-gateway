@@ -20,6 +20,8 @@ import { NovitaAdapter } from './novita.adapter';
 import { BasetenAdapter } from './baseten.adapter';
 import { ModelScopeAdapter } from './modelscope.adapter';
 import { AimlapiAdapter } from './aimlapi.adapter';
+import { GitHubModelsAdapter } from './githubmodels.adapter';
+import { CohereAdapter } from './cohere.adapter';
 
 // Single source of truth for every provider instance. To add a new
 // provider: write an adapter implementing ProviderAdapter, instantiate it
@@ -47,6 +49,8 @@ export const providerRegistry: Record<ProviderName, ProviderAdapter> = {
   baseten: new BasetenAdapter(),
   modelscope: new ModelScopeAdapter(),
   aimlapi: new AimlapiAdapter(),
+  githubmodels: new GitHubModelsAdapter(),
+  cohere: new CohereAdapter(),
 };
 
 export function getProvider(name: ProviderName): ProviderAdapter {

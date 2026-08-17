@@ -19,7 +19,9 @@ export type ProviderName =
   | 'novita'
   | 'baseten'
   | 'modelscope'
-  | 'aimlapi';
+  | 'aimlapi'
+  | 'githubmodels'
+  | 'cohere';
 
 export type TaskType =
   | 'coding'
@@ -119,6 +121,8 @@ export const ALL_PROVIDERS: ProviderName[] = [
   'baseten',
   'modelscope',
   'aimlapi',
+  'githubmodels',
+  'cohere',
 ];
 
 export const TASK_TYPES: { value: TaskType; label: string }[] = [
@@ -164,6 +168,8 @@ export const PROVIDER_META: Record<ProviderName, ProviderMeta> = {
   baseten: { label: 'Baseten', free: true, note: 'Free trial credits' },
   modelscope: { label: 'ModelScope', free: true, note: 'Free tier (Alibaba)' },
   aimlapi: { label: 'AI/ML API', free: true, note: 'Free credits, model hub' },
+  githubmodels: { label: 'GitHub Models', free: true, note: 'Free, no card, ~50-150 req/day' },
+  cohere: { label: 'Cohere', free: true, note: 'Free, no card, 1,000 req/month' },
 };
 
 export interface ProjectMemory {

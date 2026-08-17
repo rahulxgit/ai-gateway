@@ -43,6 +43,8 @@ export const env = {
   basetenApiKey: optional('BASETEN_API_KEY'),
   modelscopeApiKey: optional('MODELSCOPE_API_KEY'),
   aimlapiApiKey: optional('AIMLAPI_API_KEY'),
+  githubModelsApiKey: optional('GITHUB_MODELS_API_KEY'),
+  cohereApiKey: optional('COHERE_API_KEY'),
 
   redisUrl: optional('REDIS_URL', ''),
   cacheEnabled: optional('CACHE_ENABLED', 'false') === 'true',
