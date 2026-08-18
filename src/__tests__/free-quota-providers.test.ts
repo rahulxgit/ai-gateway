@@ -26,14 +26,12 @@ describe('genuinely free recurring-quota providers (GitHub Models, Cohere)', () 
     expect(PRICING_PER_1K_TOKENS.cohere).toBe(0);
   });
 
-  it('are included in automatic routing, ordered last given their lower recurring quotas', () => {
-    expect(FREE_AUTO_PROVIDERS).toContain('githubmodels');
+  it('cohere is included in automatic routing, ordered last given its lower recurring quota', () => {
     expect(FREE_AUTO_PROVIDERS).toContain('cohere');
-    expect(DEFAULT_FAILOVER_ORDER).toContain('githubmodels');
     expect(DEFAULT_FAILOVER_ORDER).toContain('cohere');
 
-    // Last-resort fallback ordering: both sit after every higher-quota
-    // free provider so they're only reached once those are exhausted.
+    // Last-resort fallback ordering: cohere sits after every higher-quota
+    // free provider so it's only reached once those are exhausted.
     const higherQuotaProviders: (typeof DEFAULT_FAILOVER_ORDER)[number][] = [
       'gemini',
       'openrouter',
@@ -42,12 +40,18 @@ describe('genuinely free recurring-quota providers (GitHub Models, Cohere)', () 
       'mistral',
       'cloudflare',
     ];
-    const githubmodelsIdx = DEFAULT_FAILOVER_ORDER.indexOf('githubmodels');
     const cohereIdx = DEFAULT_FAILOVER_ORDER.indexOf('cohere');
     for (const provider of higherQuotaProviders) {
-      expect(DEFAULT_FAILOVER_ORDER.indexOf(provider)).toBeLessThan(githubmodelsIdx);
       expect(DEFAULT_FAILOVER_ORDER.indexOf(provider)).toBeLessThan(cohereIdx);
     }
+  });
+
+  // githubmodels is registered and free-priced, but excluded from automatic
+  // routing (2026-08-18) since no GITHUB_MODELS_API_KEY exists in production
+  // yet — see config/routing.ts for the full note.
+  it('githubmodels is registered but currently excluded from automatic routing', () => {
+    expect(FREE_AUTO_PROVIDERS).not.toContain('githubmodels');
+    expect(DEFAULT_FAILOVER_ORDER).not.toContain('githubmodels');
   });
 });
 

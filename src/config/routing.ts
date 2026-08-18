@@ -2,12 +2,17 @@ import { ProviderName, TaskType } from '../types';
 
 // Free-first automatic routing. Paid/credit-dependent providers remain
 // available through explicit forceProvider but are never selected by the
-// automatic path. githubmodels/cohere are genuinely free with recurring
-// (not one-time) quotas and no billing risk, so they're included here too
-// — placed last in every order since their daily/monthly caps (50-150
-// req/day, 1,000 req/month respectively) are far lower than the other
-// five, so they're only reached as last-resort free fallbacks rather than
-// being hit on every request.
+// automatic path. cohere is genuinely free with a recurring (not one-time)
+// quota and no billing risk, so it's included here too — placed last since
+// its monthly cap (1,000 req/month) is far lower than the other five, so
+// it's only reached as a last-resort free fallback rather than being hit
+// on every request.
+//
+// githubmodels is temporarily excluded (2026-08-18): no GITHUB_MODELS_API_KEY
+// is set in the production env, so it was silently dead weight in every
+// candidate order — live audit confirmed 0/8 requests could ever reach it.
+// Re-add once a key is provisioned; FREE_MODEL_IDS entry below is left in
+// place so isFreeModel() still classifies it correctly if it's force-used.
 export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'gemini',
   'openrouter',
@@ -15,7 +20,6 @@ export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'cerebras',
   'mistral',
   'cloudflare',
-  'githubmodels',
   'cohere',
 ];
 
@@ -26,17 +30,16 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'cerebras',
   'mistral',
   'cloudflare',
-  'githubmodels',
   'cohere',
 ];
 
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
-  coding: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'cloudflare', 'githubmodels', 'cohere'],
-  reasoning: ['openrouter', 'gemini', 'groq', 'cerebras', 'mistral', 'cloudflare', 'githubmodels', 'cohere'],
-  creative: ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'githubmodels', 'cohere'],
-  fast: ['groq', 'cerebras', 'gemini', 'openrouter', 'mistral', 'cloudflare', 'githubmodels', 'cohere'],
+  coding: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'cloudflare', 'cohere'],
+  reasoning: ['openrouter', 'gemini', 'groq', 'cerebras', 'mistral', 'cloudflare', 'cohere'],
+  creative: ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere'],
+  fast: ['groq', 'cerebras', 'gemini', 'openrouter', 'mistral', 'cloudflare', 'cohere'],
   cheap: DEFAULT_FAILOVER_ORDER,
-  'large-context': ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'githubmodels', 'cohere'],
+  'large-context': ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere'],
   general: DEFAULT_FAILOVER_ORDER,
 };
 

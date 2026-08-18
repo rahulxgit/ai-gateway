@@ -33,7 +33,7 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
       body?.reason ??
       (typeof body?.error === 'string' ? body.error : body?.error?.message) ??
       '';
-    if (/not enough balance|insufficient (credit|balance|funds)|credit balance|low balance|add (a )?payment method/i.test(msg)) {
+    if (/not enough balance|insufficient (credit|balance|funds)|credit balance|low balance|run out of funds|top up|out of funds|add (a )?payment method/i.test(msg)) {
       return new ProviderError(provider, 'INSUFFICIENT_CREDITS', `${provider}: ${msg}`, status);
     }
     return new ProviderError(provider, 'AUTH_ERROR', `${provider}: authentication failed`, status);
@@ -113,7 +113,7 @@ export function classifyError(provider: ProviderName, err: unknown): ProviderErr
       | undefined;
     const msg =
       (typeof body?.error === 'string' ? body.error : body?.error?.message) ?? body?.message ?? '';
-    if (/credit balance|insufficient (credit|balance|funds)|add (a )?payment method|low balance/i.test(msg)) {
+    if (/credit balance|insufficient (credit|balance|funds)|add (a )?payment method|low balance|run out of funds|top up|out of funds/i.test(msg)) {
       return new ProviderError(provider, 'INSUFFICIENT_CREDITS', `${provider}: ${msg}`, status);
     }
     return new ProviderError(provider, 'INVALID_REQUEST', `${provider}: ${msg || 'invalid request'}`, status);

@@ -1,7 +1,16 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// Tests set NODE_ENV=test in setupFiles before any module (including this
+// one) is imported. Skip loading the real .env there — otherwise every
+// live provider key on this machine leaks into the test process, and tests
+// that assert "no providers configured" or "key X is unset" silently start
+// hitting real APIs instead of the fakes/mocks they were written against.
+// Individual tests that need a key set one explicitly via process.env or
+// jest.mock('../config/env', ...).
+if (process.env.NODE_ENV !== 'test') {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+}
 
 function optional(key: string, fallback = ''): string {
   return process.env[key] ?? fallback;

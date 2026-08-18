@@ -9,7 +9,12 @@ export class BasetenAdapter extends OpenAICompatibleAdapter {
       name: 'baseten',
       baseUrl: 'https://inference.baseten.co/v1',
       apiKey: env.basetenApiKey,
-      defaultModel: 'meta-llama/Llama-3.3-70B-Instruct',
+      // 'meta-llama/Llama-3.3-70B-Instruct' is no longer in Baseten's Model
+      // APIs catalog (confirmed via GET /v1/models on 2026-08-18 — it 404s).
+      // Swapped for openai/gpt-oss-120b: cheapest current model on the
+      // catalog ($0.0000001/$0.0000005 per token) and functionally
+      // equivalent as a general-purpose default.
+      defaultModel: 'openai/gpt-oss-120b',
       maxOutputTokens: 8192,
     });
   }
