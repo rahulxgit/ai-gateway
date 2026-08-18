@@ -8,7 +8,8 @@ export const SHUTDOWN_DRAIN_TIMEOUT_MS = 30_000;
 export function createGracefulShutdown(
   server: http.Server,
   closeDatabase: () => void = () => db.close(),
-  drainTimeoutMs = SHUTDOWN_DRAIN_TIMEOUT_MS
+  drainTimeoutMs = SHUTDOWN_DRAIN_TIMEOUT_MS,
+  onBeforeClose?: () => void
 ): () => void {
   let shuttingDown = false;
 
@@ -17,6 +18,7 @@ export function createGracefulShutdown(
     shuttingDown = true;
 
     logger.info('Graceful shutdown initiated');
+    onBeforeClose?.();
 
     const forceCloseTimer = setTimeout(() => {
       logger.warn('Graceful shutdown drain timeout reached; forcing connection close');
@@ -52,9 +54,10 @@ export function createGracefulShutdown(
 
 export function registerGracefulShutdown(
   server: http.Server,
-  closeDatabase: () => void = () => db.close()
+  closeDatabase: () => void = () => db.close(),
+  onBeforeClose?: () => void
 ): () => void {
-  const shutdown = createGracefulShutdown(server, closeDatabase);
+  const shutdown = createGracefulShutdown(server, closeDatabase, SHUTDOWN_DRAIN_TIMEOUT_MS, onBeforeClose);
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
   return shutdown;

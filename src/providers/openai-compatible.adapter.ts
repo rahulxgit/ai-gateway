@@ -4,6 +4,7 @@ import {
   ModelAvailabilityResult,
   ProviderAdapter,
   ProviderAdapterOptions,
+  ProviderError,
   ProviderName,
   ProviderResponse,
   StreamChunk,
@@ -245,6 +246,49 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         ? `${err.response?.status ?? 'network error'}: ${err.message}`
         : String(err);
       return { status: 'undetermined', model: this.defaultModel, detail };
+    }
+  }
+
+  // Active liveness probe for health-check.service. Deliberately the exact
+  // same GET /models call as checkModelAvailability() above — no separate
+  // network path to maintain — but routed through classifyError() instead
+  // of swallowing every failure into a single generic 'unavailable', so
+  // the health-check service gets a precise ProviderErrorCode (auth vs.
+  // billing vs. rate limit vs. genuinely gone) instead of an undifferentiated
+  // "something's wrong". Costs one GET request, never a completion — no
+  // token spend regardless of how often this runs.
+  async probeHealth(): Promise<void> {
+    if (!this.isConfigured()) {
+      throw new ProviderError(this.name, 'AUTH_ERROR', `${this.name}: not configured`);
+    }
+
+    if (this.defaultModel === 'openrouter/free') {
+      // Dynamic router with no single fixed model to check for presence —
+      // its own individual free-model routes are validated on inference,
+      // per checkModelAvailability() above. A reachable /models endpoint
+      // with a working key is the whole health signal here.
+    }
+
+    try {
+      const { data } = await axios.get(`${this.baseUrl}/models`, {
+        headers: this.headers(),
+        timeout: env.requestTimeoutMs,
+      });
+      if (this.defaultModel === 'openrouter/free') return;
+
+      const ids: unknown = data?.data ?? data?.models ?? data;
+      if (!Array.isArray(ids)) return; // Unexpected shape isn't itself a failure signal — stay silent rather than false-positive.
+
+      const modelIds = ids.map((m: unknown) => (typeof m === 'string' ? m : (m as { id?: string })?.id));
+      if (!modelIds.includes(this.defaultModel)) {
+        throw new ProviderError(
+          this.name,
+          'NOT_FOUND',
+          `${this.name}: default model "${this.defaultModel}" not present in live /models list (${modelIds.length} models returned)`
+        );
+      }
+    } catch (err) {
+      throw classifyError(this.name, err);
     }
   }
 }

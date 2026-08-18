@@ -4,6 +4,7 @@ import { runMigrations } from './database/client';
 import { logger } from './utils/logger';
 import { listConfiguredProviders } from './providers/registry';
 import { validateConfiguredModels } from './services/model-validation.service';
+import { runStartupHealthChecks, scheduleHealthCheckInterval, stopHealthCheckInterval } from './services/health-check.service';
 import { registerGracefulShutdown } from './utils/graceful-shutdown';
 
 runMigrations();
@@ -29,6 +30,19 @@ const server = app.listen(env.port, () => {
   validateConfiguredModels().catch((err) => {
     logger.warn('Model validation check failed to run', { error: String(err) });
   });
+
+  // Fire-and-forget, same reasoning: populates the health cache with real
+  // provider status before it's otherwise been exercised by user traffic,
+  // without making the server wait on ~20 sequential network calls before
+  // it can accept its first request. Then hands off to a recurring
+  // background sweep so status stays fresh even during idle periods with
+  // no chat traffic at all.
+  runStartupHealthChecks()
+    .then(() => scheduleHealthCheckInterval())
+    .catch((err) => {
+      logger.warn('Startup health checks failed to run', { error: String(err) });
+      scheduleHealthCheckInterval();
+    });
 });
 
-registerGracefulShutdown(server);
+registerGracefulShutdown(server, undefined, () => stopHealthCheckInterval());

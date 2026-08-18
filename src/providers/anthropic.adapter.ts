@@ -4,6 +4,7 @@ import {
   ModelAvailabilityResult,
   ProviderAdapter,
   ProviderAdapterOptions,
+  ProviderError,
   ProviderResponse,
   StreamChunk,
 } from '../types';
@@ -197,6 +198,39 @@ export class AnthropicAdapter implements ProviderAdapter {
         ? `${err.response?.status ?? 'network error'}: ${err.message}`
         : String(err);
       return { status: 'undetermined', model: this.defaultModel, detail };
+    }
+  }
+
+  // See openai-compatible.adapter.ts probeHealth() for the rationale —
+  // same GET /models call as checkModelAvailability() above, routed
+  // through classifyError() instead of swallowing failures, so
+  // health-check.service gets a precise ProviderErrorCode.
+  async probeHealth(): Promise<void> {
+    if (!this.isConfigured()) {
+      throw new ProviderError(this.name, 'AUTH_ERROR', `${this.name}: not configured`);
+    }
+
+    try {
+      const { data } = await axios.get(MODELS_API_URL, {
+        headers: this.headers(),
+        timeout: env.requestTimeoutMs,
+      });
+      const models: unknown = data?.data;
+      if (!Array.isArray(models)) return;
+
+      const modelIds = models
+        .map((model: unknown) => (model as { id?: string })?.id)
+        .filter((id): id is string => typeof id === 'string');
+
+      if (!modelIds.includes(this.defaultModel)) {
+        throw new ProviderError(
+          this.name,
+          'NOT_FOUND',
+          `${this.name}: default model "${this.defaultModel}" not present in live models list (${modelIds.length} returned)`
+        );
+      }
+    } catch (err) {
+      throw classifyError(this.name, err);
     }
   }
 }

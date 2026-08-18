@@ -137,11 +137,34 @@ export class ProviderError extends Error {
 
 export interface ProviderHealth {
   provider: ProviderName;
-  status: 'healthy' | 'degraded' | 'rate_limited' | 'down' | 'unknown';
+  // configured: has an API key set but has never been successfully probed
+  // or used yet. unknown: not configured at all (never eligible for
+  // routing, so there's nothing meaningful to report). Every other status
+  // reflects the most recent real signal — either a live request the
+  // gateway routed, or a background health probe — classified through the
+  // same classifyError() mapping either way, so a request-driven failure
+  // and a probe-driven failure of the same underlying cause always read
+  // identically here.
+  status:
+    | 'configured'
+    | 'healthy'
+    | 'degraded'
+    | 'rate_limited'
+    | 'auth_error'
+    | 'model_unavailable'
+    | 'billing_required'
+    | 'retired'
+    | 'unknown';
   lastCheckedAt: string;
   lastError?: string;
   avgLatencyMs?: number;
   consecutiveFailures: number;
+  // True if lastCheckedAt came from a background probe rather than a real
+  // routed chat request. Lets the UI/logs distinguish "we know this is
+  // fine because a user request just succeeded" from "we know this is
+  // fine because our own idle probe just succeeded" — useful when
+  // diagnosing why a provider looks healthy despite no recent traffic.
+  lastCheckSource?: 'traffic' | 'probe';
 }
 
 export interface ProviderAdapterOptions {
@@ -164,6 +187,14 @@ export interface ProviderAdapter {
     onChunk: (chunk: StreamChunk) => void
   ): Promise<ProviderResponse>;
   checkModelAvailability?(): Promise<ModelAvailabilityResult>;
+  // Lightweight, zero/near-zero-cost liveness probe for the background
+  // health-check service — a GET against the provider's models list where
+  // available, never a real completion request. Resolves on success;
+  // rejects with a classifyError()-produced ProviderError on failure, so
+  // callers get the exact same error taxonomy a real chat() failure would.
+  // Optional: providers with no such probe available simply aren't
+  // actively probed, and fall back to whatever real traffic reveals.
+  probeHealth?(): Promise<void>;
 }
 
 export interface ModelAvailabilityResult {
