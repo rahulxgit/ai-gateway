@@ -60,6 +60,13 @@ export interface ChatRequest {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
+  // Automatic-routing mode switch (ignored when forceProvider is set, since
+  // that already pins a single provider regardless of free/paid status).
+  // true or undefined (default): only genuinely free/no-billing-risk
+  // providers are candidates — this is the gateway's historical behavior.
+  // false: paid/trial providers become eligible too, tried after the free
+  // pool is exhausted rather than instead of it.
+  freeOnly?: boolean;
 }
 
 export interface UsageStats {

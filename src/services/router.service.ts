@@ -5,7 +5,7 @@ import {
   ProviderResponse,
   StreamChunk,
 } from '../types';
-import { buildProviderOrder, FREE_AUTO_PROVIDERS } from '../config/routing';
+import { buildAutoProviderOrder } from '../config/routing';
 import { getProvider, listConfiguredProviders } from '../providers/registry';
 import { env } from '../config/env';
 import { logger, failoverLogger } from '../utils/logger';
@@ -46,8 +46,8 @@ function candidateOrder(request: ChatRequest): ProviderName[] {
     return [request.forceProvider];
   }
 
-  const order = buildProviderOrder(request.taskType, undefined).filter(
-    (provider) => FREE_AUTO_PROVIDERS.includes(provider) && configured.has(provider)
+  const order = buildAutoProviderOrder(request.taskType, request.freeOnly).filter((provider) =>
+    configured.has(provider)
   );
 
   const eligible = requestHasImages(request)
@@ -143,8 +143,10 @@ export async function routeChat(request: ChatRequest, correlationId?: string): P
       request.forceProvider
         ? `Forced provider "${request.forceProvider}" is not configured or cannot handle this request.`
         : requestHasImages(request)
-          ? 'No vision-capable free providers are currently available.'
-          : 'No free automatic providers are currently available.'
+          ? 'No vision-capable providers are currently available for this routing mode.'
+          : request.freeOnly === false
+            ? 'No free or paid providers are currently available.'
+            : 'No free automatic providers are currently available.'
     );
   }
 
@@ -212,8 +214,10 @@ export async function routeChatStream(
       request.forceProvider
         ? `Forced provider "${request.forceProvider}" is not configured or cannot handle this request.`
         : requestHasImages(request)
-          ? 'No vision-capable free providers are currently available.'
-          : 'No free automatic providers are currently available.'
+          ? 'No vision-capable providers are currently available for this routing mode.'
+          : request.freeOnly === false
+            ? 'No free or paid providers are currently available.'
+            : 'No free automatic providers are currently available.'
     );
   }
 

@@ -95,6 +95,18 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   cohere: 0,
 };
 
+// Everything NOT in FREE_AUTO_PROVIDERS, ordered cheapest-per-1k-token
+// first. Only reachable when a caller explicitly opts out of free-only
+// routing (ChatRequest.freeOnly === false) — see buildAutoProviderOrder.
+// githubmodels is deliberately left out here too: it's priced at $0 (a
+// free-tier provider, not a paid one) but currently unconfigured, so it
+// belongs in neither pool until GITHUB_MODELS_API_KEY exists in prod.
+export const PAID_AUTO_PROVIDERS: ProviderName[] = (
+  Object.keys(PRICING_PER_1K_TOKENS) as ProviderName[]
+)
+  .filter((p) => !FREE_AUTO_PROVIDERS.includes(p) && p !== 'githubmodels')
+  .sort((a, b) => PRICING_PER_1K_TOKENS[a] - PRICING_PER_1K_TOKENS[b]);
+
 export function buildProviderOrder(
   taskType: TaskType | undefined,
   forceProvider: ProviderName | undefined
@@ -105,4 +117,17 @@ export function buildProviderOrder(
 
   const preferred = TASK_ROUTING[taskType ?? 'general'];
   return Array.from(new Set(preferred));
+}
+
+// Mode-aware version of buildProviderOrder for automatic (non-forced)
+// routing. freeOnly defaults to true so existing callers/behavior are
+// unaffected; passing false appends the paid pool as a fallback tier
+// after every free provider has been tried, rather than replacing it.
+export function buildAutoProviderOrder(
+  taskType: TaskType | undefined,
+  freeOnly: boolean | undefined
+): ProviderName[] {
+  const free = Array.from(new Set(TASK_ROUTING[taskType ?? 'general']));
+  if (freeOnly !== false) return free;
+  return Array.from(new Set([...free, ...PAID_AUTO_PROVIDERS]));
 }

@@ -38,6 +38,7 @@ export interface SendChatInput {
   forceProvider?: ProviderName;
   model?: string;
   maxTokens?: number;
+  freeOnly?: boolean;
 }
 
 export const api = {
@@ -48,7 +49,7 @@ export const api = {
     request<{ status: string; providers: ProviderHealth[] }>('/health'),
 
   getProviders: () =>
-    request<{ configured: ProviderName[]; all: ProviderName[] }>('/providers'),
+    request<{ configured: ProviderName[]; all: ProviderName[]; freeModels: ProviderName[]; paidModels: ProviderName[] }>('/providers'),
 
   getAnalytics: () => request<{ summary: AnalyticsSummary; recent: unknown[] }>('/analytics'),
 

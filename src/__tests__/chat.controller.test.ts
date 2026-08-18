@@ -71,6 +71,8 @@ describe('chat.controller', () => {
       expect(res.json).toHaveBeenCalledWith({
         configured: ['gemini', 'anthropic'],
         all: ['gemini', 'anthropic', 'openai'],
+        freeModels: ['gemini'],
+        paidModels: ['anthropic'],
       });
     });
   });

@@ -83,6 +83,48 @@ describe('routeChat free-first failover', () => {
     expect(adapters.openai.chat).not.toHaveBeenCalled();
   });
 
+  it('freeOnly: false falls through to a paid provider once every free provider has failed', async () => {
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'openrouter', 'groq', 'cerebras', 'mistral', 'cloudflare', 'huggingface']);
+    // health.service seeds each provider's initial status from the real
+    // providerRegistry[name].isConfigured() at module load, independent of
+    // the listConfiguredProviders mock above — since no HF_API_KEY exists
+    // in the test env, huggingface would otherwise seed as 'down' and get
+    // filtered out before the attempt loop ever sees it.
+    recordSuccess('huggingface', 1);
+    const adapters: Record<string, ReturnType<typeof mockAdapter>> = {};
+    for (const provider of ['gemini', 'openrouter', 'groq', 'cerebras', 'mistral', 'cloudflare'] as ProviderName[]) {
+      adapters[provider] = mockAdapter(provider, async () => {
+        throw new ProviderError(provider, 'INVALID_REQUEST', `${provider} rejected request`);
+      });
+    }
+    adapters.huggingface = mockAdapter('huggingface', async () => ({
+      provider: 'huggingface', model: 'test-model', content: 'paid fallback response',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }, latencyMs: 5, estimatedCostUsd: 0.0001,
+    }));
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => adapters[name]);
+
+    const result = await routeChat({ messages: [{ role: 'user', content: 'hello' }], freeOnly: false });
+    expect(result.response.provider).toBe('huggingface');
+    for (const provider of ['gemini', 'openrouter', 'groq', 'cerebras', 'mistral', 'cloudflare'] as ProviderName[]) {
+      expect(adapters[provider].chat).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('freeOnly: false still exhausts free providers before trying any paid one', async () => {
+    (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'openai']);
+    recordSuccess('openai', 1);
+    const gemini = mockAdapter('gemini', async () => ({
+      provider: 'gemini', model: 'gemini-3.1-flash-lite', content: 'free provider handled it',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }, latencyMs: 5, estimatedCostUsd: 0,
+    }));
+    const openai = mockAdapter('openai', async () => { throw new Error('paid provider should not be reached'); });
+    (getProvider as jest.Mock).mockImplementation((name: ProviderName) => ({ gemini, openai }[name as 'gemini' | 'openai']));
+
+    const result = await routeChat({ messages: [{ role: 'user', content: 'hello' }], freeOnly: false });
+    expect(result.response.provider).toBe('gemini');
+    expect(openai.chat).not.toHaveBeenCalled();
+  });
+
   it('allows an explicitly forced paid provider and never falls through', async () => {
     const openai = mockAdapter('openai', async () => ({
       provider: 'openai', model: 'gpt-5', content: 'paid manual route',

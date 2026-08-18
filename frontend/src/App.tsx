@@ -21,6 +21,11 @@ export default function App() {
   const [taskType, setTaskType] = useState<TaskType>('general');
   const [forceProvider, setForceProvider] = useState<ProviderName | 'auto'>('auto');
   const [modelOverride, setModelOverride] = useState('');
+  const [freeOnly, setFreeOnly] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem('freeOnly');
+    return stored === null ? true : stored === 'true';
+  });
   const [projects, setProjects] = useState<ProjectMemory[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectMemory | null>(null);
   const [sending, setSending] = useState(false);
@@ -44,6 +49,10 @@ export default function App() {
     refreshSessions();
     refreshProjects();
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('freeOnly', String(freeOnly));
+  }, [freeOnly]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -101,6 +110,7 @@ export default function App() {
         forceProvider: forceProvider === 'auto' ? undefined : forceProvider,
         model: modelOverride || undefined,
         maxTokens: taskType === 'coding' ? 64000 : undefined,
+        freeOnly: forceProvider === 'auto' ? freeOnly : undefined,
       });
 
       if (!activeSessionId) {
@@ -169,6 +179,8 @@ export default function App() {
                 onForceProviderChange={setForceProvider}
                 model={modelOverride}
                 onModelChange={setModelOverride}
+                freeOnly={freeOnly}
+                onFreeOnlyChange={setFreeOnly}
               />
             </div>
 
@@ -193,6 +205,8 @@ export default function App() {
                 onForceProviderChange={setForceProvider}
                 model={modelOverride}
                 onModelChange={setModelOverride}
+                freeOnly={freeOnly}
+                onFreeOnlyChange={setFreeOnly}
               />
             </div>
           </div>

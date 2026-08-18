@@ -60,6 +60,7 @@ export const chatRequestSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(1).max(384000).optional(),
   stream: z.boolean().optional(),
+  freeOnly: z.boolean().optional(),
 });
 
 export function requestCorrelationId(req: Request, res: Response, next: NextFunction) {
@@ -102,6 +103,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   if (
     message.includes('No providers are configured') ||
     message.includes('No free automatic providers') ||
+    message.includes('No free or paid providers') ||
     message.includes('No vision-capable providers') ||
     message.includes('Forced provider')
   ) {
