@@ -36,7 +36,7 @@ function requestHasImages(request: ChatRequest): boolean {
   return request.messages.some((m) => m.images && m.images.length > 0);
 }
 
-function candidateOrder(request: ChatRequest): ProviderName[] {
+function candidateOrder(request: ChatRequest, correlationId?: string): ProviderName[] {
   const configured = new Set(listConfiguredProviders());
 
   if (request.forceProvider) {
@@ -54,7 +54,36 @@ function candidateOrder(request: ChatRequest): ProviderName[] {
     ? order.filter((p) => getProvider(p).supportsVision)
     : order;
 
-  return eligible.filter((p) => isLikelyHealthy(p));
+  const healthy = eligible.filter((p) => isLikelyHealthy(p));
+
+  // Circuit-breaker dead end: health cooldowns are a heuristic, not a
+  // certainty — a rate-limit window can lift, or a "down" provider can
+  // recover, well before its cooldown timer expires. If cooldowns happen to
+  // take out every otherwise-eligible provider at once (e.g. a correlated
+  // burst of failures), that heuristic would otherwise turn into a hard
+  // outage for up to DOWN_RECOVERY_COOLDOWN_MS/QUOTA_COOLDOWN_MS (10-30 min)
+  // even though real providers are still configured and might already be
+  // fine again. Rather than fail the request outright, fall back to probing
+  // the full eligible set for real — a genuine attempt beats a synthetic
+  // failure, and a real attempt also naturally clears the cooldown via
+  // recordSuccess/recordFailure once it resolves.
+  if (healthy.length === 0 && eligible.length > 0) {
+    failoverLogger.warn('All eligible providers are in health cooldown; probing anyway rather than failing outright', {
+      correlationId,
+      eligible,
+    });
+    return eligible;
+  }
+
+  if (healthy.length < eligible.length) {
+    failoverLogger.info('Some eligible providers excluded by health cooldown before this request was attempted', {
+      correlationId,
+      excluded: eligible.filter((p) => !healthy.includes(p)),
+      remaining: healthy,
+    });
+  }
+
+  return healthy;
 }
 
 function modelForProvider(request: ChatRequest, providerName: ProviderName): string | undefined {
@@ -137,7 +166,7 @@ async function callWithBudgetRetry<T>(
 }
 
 export async function routeChat(request: ChatRequest, correlationId?: string): Promise<RouteResult> {
-  const order = candidateOrder(request);
+  const order = candidateOrder(request, correlationId);
   if (order.length === 0) {
     throw new Error(
       request.forceProvider
@@ -208,7 +237,7 @@ export async function routeChatStream(
   onChunk: (chunk: StreamChunk) => void,
   correlationId?: string
 ): Promise<RouteResult> {
-  const order = candidateOrder(request);
+  const order = candidateOrder(request, correlationId);
   if (order.length === 0) {
     throw new Error(
       request.forceProvider
