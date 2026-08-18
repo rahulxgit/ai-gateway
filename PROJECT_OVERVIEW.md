@@ -71,7 +71,8 @@ src/
     orchestrator.service.ts context injection and cost budget
     analytics.service.ts    usage/cost analytics and cache
     model-validation.service.ts model catalog/availability cache
-    health.service.ts       provider health/latency
+    health.service.ts       provider health state, status taxonomy, cooldowns
+    health-check.service.ts active background health probing (startup + interval)
     conversation.service.ts sessions/messages
     project-memory.service.ts projects and persistent context
     workspace.service.ts    file versions, undo, snapshots
@@ -113,10 +114,14 @@ There are 23 providers in the current registry:
 19. Baseten
 20. ModelScope
 21. AI/ML API
-22. GitHub Models (free, no card, recurring daily quota)
+22. GitHub Models (free, no card, recurring daily quota — currently excluded from automatic routing, see note below; no key configured yet)
 23. Cohere (free, no card, recurring monthly quota)
 
 Use `src/providers/registry.ts` and `src/config/routing.ts` as the source of truth for provider registration and routing order. Do not maintain a separate hand-written provider list in middleware or API code.
+
+**Free vs. paid automatic routing (added 2026-08-18):** `src/config/routing.ts` exports `FREE_AUTO_PROVIDERS` and `PAID_AUTO_PROVIDERS` as two disjoint pools. Automatic routing (`buildAutoProviderOrder`) defaults to the free pool only — this is the gateway's historical behavior and remains the default. A per-request `ChatRequest.freeOnly: false` opts a single request into also trying the paid pool, cheapest-first, strictly *after* every free provider has been attempted and failed — never instead of. `forceProvider` is unaffected either way; it pins exactly one provider regardless of free/paid status. `GET /providers` reports the current `freeModels`/`paidModels` split for configured providers.
+
+**GitHub Models exclusion:** `githubmodels` is registered and priced as free, but is currently excluded from `FREE_AUTO_PROVIDERS` — a live provider audit (2026-08-18) found no `GITHUB_MODELS_API_KEY` configured in production, meaning it was a silent dead entry in every candidate order. Re-add it to `FREE_AUTO_PROVIDERS` (and the matching entries in `TASK_ROUTING`) once a real key is verified working; `src/__tests__/failover-no-dead-ends.test.ts` will fail the "every registered provider is reachable" check if a provider is ever left out of both pools without being added to that test's `knownExclusions` list, so update both together.
 
 Vision routing currently restricts image-bearing requests to configured vision-capable providers.
 
@@ -158,6 +163,8 @@ At least one provider API key is required for useful inference traffic. Cloudfla
 
 `ProviderError.retryable` distinguishes transient failures from failures that should not retry the same provider. `AUTH_ERROR`, `NOT_FOUND`, `ACCOUNT_SUSPENDED`, and `INSUFFICIENT_CREDITS` are non-retryable for the same provider, while router failover to another provider remains possible.
 
+`base.adapter.ts`'s billing-vs-auth classification is regex-based against the provider's error message text — it was found (2026-08-18) to miss "run out of funds"/"top up your balance" phrasing (aimlapi), which misclassified a billing issue as `AUTH_ERROR`. The regex was broadened; if a new provider's billing error message doesn't match `INSUFFICIENT_CREDITS`, check `classifyError()`'s regex first before assuming the key itself is bad.
+
 ### 3. Rolling 24-hour cost guard
 
 `orchestrator.service.ts` checks the live 24-hour estimated spend before chat execution when `DAILY_COST_BUDGET_USD` is positive. Exceeding the budget returns HTTP `429`.
@@ -168,19 +175,29 @@ At least one provider API key is required for useful inference traffic. Cloudfla
 - `POST /chat` and `POST /chat/stream`: stricter chat limiter using `RATE_LIMIT_MAX`.
 - Other API routes: normal limiter using `RATE_LIMIT_MAX`.
 
-### 5. Model availability
+### 5. Health status taxonomy and active probing
 
-`/health/models` checks configured provider model availability. Gemini and Anthropic implement `checkModelAvailability()` in addition to the OpenAI-compatible adapter.
+`health.service.ts` classifies every provider into one of 9 statuses — `configured` (has a key, never checked yet), `healthy`, `degraded`, `rate_limited`, `auth_error`, `model_unavailable`, `billing_required`, `retired`, or `unknown` (no key configured at all) — derived from the exact same `ProviderErrorCode` that real routed traffic already produces via `classifyError()`. A billing failure detected from a live chat request and one detected from a background probe both land on `billing_required` identically.
 
-### 6. Correlation IDs
+`health-check.service.ts` runs an active liveness probe (`adapter.probeHealth()` — a `GET /models` call, no completion tokens spent) on server startup (staggered 250ms apart, non-blocking — doesn't delay `server.listen()`) and on a recurring 5-minute interval afterward, so health status stays current even with zero chat traffic. A provider already confirmed fresh by real traffic within the last ~4.5 minutes is skipped on that tick rather than redundantly re-probed. `/health/models` and `checkModelAvailability()` remain a separate, coarser existence check; `probeHealth()` is the one that actually updates `/health`'s status.
+
+Each `ProviderHealth` entry also reports `lastCheckSource: 'traffic' | 'probe'` so it's possible to tell whether a given "healthy" reading came from a real user request or from the idle background prober.
+
+### 6. Cooldown circuit-breaker with a probe-anyway fallback
+
+Non-self-healing statuses (`rate_limited`, `auth_error`, `billing_required`, `model_unavailable`, `retired`) apply a cooldown so `isLikelyHealthy()` excludes them from `candidateOrder()` for a bounded window (5-30 min depending on the status) rather than retrying a known-bad provider on every request.
+
+**Known failure mode this guards against:** health cooldowns are a heuristic (last known state), not a guarantee — a rate limit can lift, a quota can reset, a transient error can clear, all before the cooldown timer expires. If a correlated burst of failures happened to put every eligible provider into cooldown simultaneously, `candidateOrder()` would return `[]` and the gateway would fail immediately for up to 30 minutes even though a provider might have already recovered — a genuine dead end (fixed 2026-08-18, see `router.service.ts`'s `candidateOrder`). The fix: when health filtering would eliminate every eligible candidate, the router probes the full eligible set for real instead of failing synthetically. `src/__tests__/failover-no-dead-ends.test.ts` covers this along with structural coverage (every registered provider reachable via `FREE_AUTO_PROVIDERS`/`PAID_AUTO_PROVIDERS`/a documented exclusion, no `TASK_ROUTING` entry drifting from `FREE_AUTO_PROVIDERS`).
+
+### 7. Correlation IDs
 
 Every HTTP request gets a UUID in `X-Request-ID`. The ID is propagated into relevant router, orchestrator, health, and error logging.
 
-### 7. Production logging
+### 8. Production logging
 
 Production logging uses Winston console output rather than depending on persistent log files. This matches container/Render-style deployment where application filesystem logs are not the operational source of truth.
 
-### 8. Graceful shutdown
+### 9. Graceful shutdown
 
 `SIGTERM`/`SIGINT`:
 
@@ -198,11 +215,11 @@ close SQLite
 
 The shutdown path has a bounded fallback for stuck connections.
 
-### 9. Redis L2 cache
+### 10. Redis L2 cache
 
 Analytics and model-validation caches support an optional shared Redis L2. Existing in-process caching remains the fast L1 path and fallback. Redis failures are non-fatal to the application.
 
-### 10. Body-size limits
+### 11. Body-size limits
 
 - Normal JSON traffic: **2 MB**.
 - `POST /chat` and `POST /chat/stream`: **50 MB** JSON parser so existing vision payloads remain supported.
@@ -281,7 +298,7 @@ Notable behavior:
 - `429` is returned for the configured rolling daily cost budget.
 - `504` is used for the global gateway request-budget error.
 - `502` is used when all configured providers fail.
-- `503` is used when no usable providers/vision-capable providers are configured.
+- `503` is used when no usable providers/vision-capable providers are configured. The exact message varies: "No free automatic providers are currently available" (default `freeOnly` routing) vs. "No free or paid providers are currently available" (`freeOnly: false` and still nothing eligible) — `middleware/index.ts`'s error handler matches on both.
 
 ---
 
@@ -304,6 +321,8 @@ npm run lint
 npx jest --runInBand
 npm run build
 ```
+
+**Test isolation from `.env` (added 2026-08-18):** `src/config/env.ts` skips loading the real `.env` file entirely when `NODE_ENV=test` (set by `src/__tests__/setup.ts` before any module imports). This was fixed after real provider keys in a local `.env` leaked into `process.env` during `npm test`, making tests that assumed "no providers configured" actually hit live APIs and blow past jest's default 5s timeout. Any test that needs a specific key present should set it explicitly via `process.env` or a `jest.mock('../config/env', ...)`, never by relying on the real `.env`.
 
 CI additionally validates the repository's Docker/Vercel integration where configured.
 

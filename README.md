@@ -27,11 +27,12 @@ Backend: https://ai-gateway-wx35.onrender.com
 
 - 23 configured provider adapters behind a shared `ProviderAdapter` interface.
 - Task-aware routing and automatic provider failover.
+- Free-first automatic routing by default, with an opt-in `freeOnly: false` per request to also try paid providers (cheapest-first) once every free one has failed — see [Free vs. paid routing](#free-vs-paid-routing) below.
 - Streaming chat support.
 - Conversation/session persistence in SQLite.
 - Persistent projects, workspace files, edit history, undo/revert, and snapshots.
 - Document upload/extraction support for the existing upload flow.
-- Provider health and model-availability checks, including Gemini and Anthropic.
+- Provider health and model-availability checks, including Gemini and Anthropic, backed by both real request traffic and an active background prober (startup + every 5 minutes) so status stays current even with no chat activity.
 - Token/cost analytics and an optional rolling 24-hour cost budget.
 - Optional Redis L2 caching with in-process L1 fallback.
 - Request correlation IDs through the HTTP request and service logging path.
@@ -85,6 +86,7 @@ Backend: https://ai-gateway-wx35.onrender.com
 | Analytics | `src/services/analytics.service.ts` |
 | Model validation | `src/services/model-validation.service.ts` |
 | Health | `src/services/health.service.ts` |
+| Active health probing | `src/services/health-check.service.ts` |
 | Redis L2 cache | `src/utils/redis-cache.ts` |
 | Request parsing limits | `src/middleware/body-limit.ts` |
 | HTTP middleware | `src/middleware/index.ts` |
@@ -145,10 +147,31 @@ The current registry contains 23 providers:
 19. Baseten
 20. ModelScope
 21. AI/ML API
-22. GitHub Models (free, no card, recurring daily quota)
+22. GitHub Models (free, no card, recurring daily quota — currently excluded from automatic routing; no key configured yet, see note below)
 23. Cohere (free, no card, recurring monthly quota)
 
-Provider availability is configuration-driven: set a provider's API key (and Cloudflare's account ID where required) and the registry can expose it. `/providers` and `/health/models` reflect the providers configured in the running environment.
+Provider availability is configuration-driven: set a provider's API key (and Cloudflare's account ID where required) and the registry can expose it. `/providers` and `/health/models` reflect the providers configured in the running environment. `/providers` also returns `freeModels`/`paidModels`, reflecting which configured providers currently participate in the free vs. paid automatic-routing pools (see below).
+
+> **GitHub Models note:** registered and priced as free, but excluded from automatic routing as of 2026-08-18 — a live provider audit found no `GITHUB_MODELS_API_KEY` in production, so it was an unreachable dead entry in every routing order. Still usable via `forceProvider: "githubmodels"` once a key is set; re-add to `FREE_AUTO_PROVIDERS` in `src/config/routing.ts` after verifying.
+
+## Free vs. paid routing
+
+Automatic routing defaults to free/no-billing-risk providers only — this has always been the gateway's behavior and remains unchanged by default. A request can opt into also trying paid providers as a fallback tier, strictly *after* every free provider has been attempted and failed, by setting `freeOnly: false`:
+
+```json
+{
+  "messages": [{ "role": "user", "content": "..." }],
+  "freeOnly": false
+}
+```
+
+Paid providers are tried cheapest-per-token first. `forceProvider` is unaffected either way — it pins exactly one provider regardless of free/paid status, and `freeOnly` is ignored when it's set. Omitting `freeOnly` (or setting it `true`) preserves the original free-only behavior.
+
+## Provider health
+
+Every provider reports one of 9 statuses via `GET /health`: `configured` (key set, never checked yet), `healthy`, `degraded`, `rate_limited`, `auth_error`, `model_unavailable`, `billing_required`, `retired`, or `unknown` (no key configured). Status is derived identically whether it came from a real routed chat request or from the background prober — both funnel through the same error classification.
+
+The background prober (`health-check.service.ts`) runs a lightweight `GET /models` liveness check — never a completion request, so it costs no tokens — on server startup and every 5 minutes afterward, so health data stays current even during periods with no chat traffic at all. A provider already confirmed fresh by real traffic recently is skipped on a given tick rather than redundantly re-probed.
 
 ## Quick start
 
@@ -278,13 +301,13 @@ Streaming chat request.
 ### Health and provider discovery
 
 `GET /health`  
-Provider health/status information.
+Provider health/status information — one of 9 statuses per provider (`configured`, `healthy`, `degraded`, `rate_limited`, `auth_error`, `model_unavailable`, `billing_required`, `retired`, `unknown`), refreshed by both real chat traffic and an active background prober.
 
 `GET /health/models`  
 Checks configured provider model availability, including Gemini and Anthropic.
 
 `GET /providers`  
-Lists configured/available providers.
+Lists configured/available providers, plus a `freeModels`/`paidModels` breakdown of the automatic-routing pools.
 
 These lightweight read endpoints use the generous read rate limiter.
 
@@ -313,7 +336,7 @@ The gateway also exposes the existing session, project, workspace, and upload AP
 }
 ```
 
-Optional routing controls include `taskType`, `forceProvider`, and `model`.
+Optional routing controls include `taskType`, `forceProvider`, `model`, and `freeOnly` (see [Free vs. paid routing](#free-vs-paid-routing) above).
 
 Example forcing a provider:
 
@@ -369,6 +392,8 @@ The current `main` includes the following production hardening changes:
 8. **Graceful shutdown** — `SIGTERM`/`SIGINT` stops new HTTP connections, drains active requests, closes optional Redis, and closes SQLite with a bounded fallback.
 9. **Optional Redis L2** — Redis can back analytics/model-validation caches while the in-process cache remains the fast path and fallback.
 10. **Body-size hardening** — normal JSON is capped at 2 MB; chat JSON remains at 50 MB for existing image/vision payloads.
+11. **Active health probing** — a background prober checks provider liveness on startup and every 5 minutes via a zero-token-cost `GET /models` call, so `/health` stays accurate without depending on chat traffic to surface it.
+12. **No-dead-end failover** — if a correlated burst of failures puts every eligible provider into a health cooldown simultaneously, the router probes them anyway rather than failing synthetically for up to 30 minutes; a real attempt beats a heuristic-driven outage.
 
 ## Security note
 
