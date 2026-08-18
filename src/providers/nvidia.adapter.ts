@@ -7,7 +7,7 @@ export class NvidiaAdapter extends OpenAICompatibleAdapter {
       name: 'nvidia',
       baseUrl: 'https://integrate.api.nvidia.com/v1',
       apiKey: env.nvidiaApiKey,
-      defaultModel: 'meta/llama-3.3-70b-instruct',
+      defaultModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
       maxOutputTokens: 8192,
       // NVIDIA NIM's free tier can cold-start this model very slowly —
       // measured live at ~61s for a two-word prompt, well past the
