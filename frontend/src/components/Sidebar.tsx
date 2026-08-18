@@ -53,11 +53,11 @@ export function Sidebar({
         className={`fixed inset-y-0 left-0 z-40 h-full shrink-0 border-r border-hairline/80 bg-panel/95 shadow-2xl transition-transform duration-200 ease-out backdrop-blur-xl
           lg:relative lg:z-auto lg:order-first lg:h-auto lg:translate-x-0 lg:shadow-none lg:transition-[width,opacity]
           ${open ? 'translate-x-0' : '-translate-x-full'}
-          ${open ? 'lg:w-80 lg:opacity-100' : 'lg:w-0 lg:overflow-hidden lg:opacity-0 lg:border-r-0'}
+          ${open ? 'lg:w-64 lg:opacity-100' : 'lg:w-0 lg:overflow-hidden lg:opacity-0 lg:border-r-0'}
         `}
       >
-        <div className="flex h-full w-[88vw] max-w-[340px] flex-col lg:w-80">
-          <div className="flex items-center gap-2 border-b border-hairline/80 p-3.5">
+        <div className="flex h-full w-[85vw] max-w-[300px] flex-col lg:w-64">
+          <div className="flex items-center gap-2 border-b border-hairline/80 p-3">
             <button
               type="button"
               onClick={() => {
@@ -82,7 +82,7 @@ export function Sidebar({
             </button>
           </div>
 
-          <div className="border-b border-hairline/80 px-3.5 py-3">
+          <div className="border-b border-hairline/80 px-3 py-2.5">
             <label className="relative block">
               <span className="sr-only">Search conversations</span>
               <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -98,7 +98,7 @@ export function Sidebar({
             </label>
           </div>
 
-          <div className="border-b border-hairline/80 p-3.5">
+          <div className="border-b border-hairline/80 p-3">
             <div className="mb-2 flex items-center justify-between">
               <div>
                 <h2 className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">Projects</h2>
@@ -176,7 +176,7 @@ export function Sidebar({
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin px-3.5 pb-3 pt-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3 pt-3.5">
             <div className="mb-2 flex items-center justify-between px-1">
               <h2 className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">Conversations</h2>
               <span className="font-mono text-[10px] text-ink-faint">{filteredSessions.length}</span>
@@ -223,7 +223,7 @@ export function Sidebar({
             ))}
           </div>
 
-          <div className="border-t border-hairline/80 px-3.5 py-3 font-mono text-[10px] text-ink-faint">
+          <div className="border-t border-hairline/80 px-3 py-2.5 font-mono text-[10px] text-ink-faint">
             <div className="flex items-center justify-between">
               <span>AI Gateway</span>
               <span className="text-ok">● operational</span>

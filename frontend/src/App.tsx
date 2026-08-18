@@ -3,7 +3,6 @@ import { Sidebar } from './components/Sidebar';
 import { MessageBubble } from './components/MessageBubble';
 import { Composer } from './components/Composer';
 import { RoutingControls } from './components/RoutingControls';
-import { HealthBar } from './components/HealthBar';
 import { AnalyticsPanel } from './components/AnalyticsPanel';
 import { api } from './lib/api';
 import type { ChatMessage, ChatSession, ImageAttachment, ProjectMemory, ProviderName, TaskType } from './types';
@@ -185,7 +184,6 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2">
-              <HealthBar />
               <button
                 type="button"
                 onClick={() => setShowAnalytics(true)}

@@ -5,9 +5,13 @@ import { api } from '../lib/api';
 
 const STATUS_DOT: Record<ProviderHealth['status'], string> = {
   healthy: 'bg-ok',
+  configured: 'bg-ink-faint',
   degraded: 'bg-signal',
   rate_limited: 'bg-signal',
-  down: 'bg-danger',
+  auth_error: 'bg-danger',
+  billing_required: 'bg-danger',
+  model_unavailable: 'bg-danger',
+  retired: 'bg-danger',
   unknown: 'bg-ink-faint',
 };
 

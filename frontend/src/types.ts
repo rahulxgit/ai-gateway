@@ -65,11 +65,21 @@ export interface ChatResult {
 
 export interface ProviderHealth {
   provider: ProviderName;
-  status: 'healthy' | 'degraded' | 'rate_limited' | 'down' | 'unknown';
+  status:
+    | 'configured'
+    | 'healthy'
+    | 'degraded'
+    | 'rate_limited'
+    | 'auth_error'
+    | 'model_unavailable'
+    | 'billing_required'
+    | 'retired'
+    | 'unknown';
   lastCheckedAt: string;
   lastError?: string;
   avgLatencyMs?: number;
   consecutiveFailures: number;
+  lastCheckSource?: 'traffic' | 'probe';
 }
 
 export interface ChatSession {
