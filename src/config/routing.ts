@@ -21,6 +21,11 @@ export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'mistral',
   'cloudflare',
   'cohere',
+  // Confirmed free (build.nvidia.com model card, checked 2026-08-19). Cold
+  // starts can be slow (see nvidia.adapter.ts's 90s requestTimeoutMs) so
+  // it's placed last-ish in practice via DEFAULT_FAILOVER_ORDER rather than
+  // being a first-choice free provider.
+  'nvidia',
 ];
 
 export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
@@ -31,15 +36,18 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   'mistral',
   'cloudflare',
   'cohere',
+  // Last: confirmed-free but slow cold starts (see FREE_AUTO_PROVIDERS
+  // comment above) make it a poor first pick for automatic failover.
+  'nvidia',
 ];
 
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
-  coding: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'cloudflare', 'cohere'],
-  reasoning: ['openrouter', 'gemini', 'groq', 'cerebras', 'mistral', 'cloudflare', 'cohere'],
-  creative: ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere'],
-  fast: ['groq', 'cerebras', 'gemini', 'openrouter', 'mistral', 'cloudflare', 'cohere'],
+  coding: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'cloudflare', 'cohere', 'nvidia'],
+  reasoning: ['openrouter', 'gemini', 'groq', 'cerebras', 'mistral', 'cloudflare', 'cohere', 'nvidia'],
+  creative: ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere', 'nvidia'],
+  fast: ['groq', 'cerebras', 'gemini', 'openrouter', 'mistral', 'cloudflare', 'cohere', 'nvidia'],
   cheap: DEFAULT_FAILOVER_ORDER,
-  'large-context': ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere'],
+  'large-context': ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere', 'nvidia'],
   general: DEFAULT_FAILOVER_ORDER,
 };
 
@@ -56,6 +64,7 @@ export const FREE_MODEL_IDS: Partial<Record<ProviderName, string[]>> = {
   cloudflare: ['@cf/google/gemma-4-26b-a4b-it'],
   githubmodels: ['openai/gpt-4o-mini', 'openai/gpt-4o', 'meta/llama-3.3-70b-instruct'],
   cohere: ['command-r7b-12-2024'],
+  nvidia: ['nvidia/nemotron-3.5-lightning-30b-a3b'],
 };
 
 export function isFreeModel(provider: ProviderName, model: string): boolean {
@@ -82,7 +91,7 @@ export const PRICING_PER_1K_TOKENS: Record<ProviderName, number> = {
   inference: 0.0001,
   nebius: 0.0002,
   sambanova: 0.0001,
-  nvidia: 0.0002,
+  nvidia: 0,
   novita: 0.0002,
   baseten: 0.0002,
   modelscope: 0.0001,

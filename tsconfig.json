@@ -22,6 +22,7 @@
       "@/*": ["*"]
     }
   },
+  "files": ["src/types/express.d.ts"],
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "frontend", "src/__tests__"]
 }

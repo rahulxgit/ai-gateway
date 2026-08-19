@@ -66,3 +66,16 @@ export function listConfiguredProviders(): ProviderName[] {
 export function listAllProviders(): ProviderName[] {
   return Object.keys(providerRegistry) as ProviderName[];
 }
+
+// Every genuinely free (provider, model) pair currently usable, drawn
+// directly from each adapter's own freeModels property rather than a
+// hand-maintained list — so this can never drift from what the adapters
+// actually serve for free. Unconfigured providers are excluded since an
+// unusable key means the "free" model isn't actually reachable.
+export function listFreeModels(): { provider: ProviderName; model: string }[] {
+  return (Object.keys(providerRegistry) as ProviderName[])
+    .filter((name) => providerRegistry[name].isConfigured())
+    .flatMap((name) =>
+      (providerRegistry[name].freeModels ?? []).map((model) => ({ provider: name, model }))
+    );
+}

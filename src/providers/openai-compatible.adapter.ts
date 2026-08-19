@@ -47,7 +47,8 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   private readonly extraBodyParams: Record<string, unknown>;
   private readonly requestTimeoutMs?: number;
   private readonly sendTemperature: boolean;
-  private readonly freeModels: Set<string>;
+  private readonly freeModelsSet: Set<string>;
+  readonly freeModels: string[];
 
   constructor(config: {
     name: ProviderName;
@@ -72,7 +73,8 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     this.extraBodyParams = config.extraBodyParams ?? {};
     this.requestTimeoutMs = config.requestTimeoutMs;
     this.sendTemperature = config.sendTemperature ?? true;
-    this.freeModels = new Set(config.freeModels ?? []);
+    this.freeModelsSet = new Set(config.freeModels ?? []);
+    this.freeModels = [...this.freeModelsSet];
   }
 
   isConfigured(): boolean {
@@ -102,7 +104,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   }
 
   private isConfiguredFreeModel(model: string): boolean {
-    return this.freeModels.has(model) || isFreeModel(this.name, model);
+    return this.freeModelsSet.has(model) || isFreeModel(this.name, model);
   }
 
   private estimatedCostUsd(model: string, totalTokens: number, requestedModel = model): number {

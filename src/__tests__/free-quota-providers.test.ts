@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { providerRegistry, listAllProviders } from '../providers/registry';
+import { providerRegistry, listAllProviders, listFreeModels } from '../providers/registry';
 import { PRICING_PER_1K_TOKENS, FREE_AUTO_PROVIDERS, DEFAULT_FAILOVER_ORDER } from '../config/routing';
 import { GitHubModelsAdapter } from '../providers/githubmodels.adapter';
 import { CohereAdapter } from '../providers/cohere.adapter';
@@ -189,5 +189,42 @@ describe('CohereAdapter', () => {
 
     const sentBody = mockedAxios.post.mock.calls[0][1] as { messages: { role: string; content: string }[] };
     expect(sentBody.messages).toEqual([{ role: 'user', content: 'describe this' }]);
+  });
+});
+
+describe('listFreeModels()', () => {
+  it('only includes (provider, model) pairs from configured providers', () => {
+    const originalCohereKey = env.cohereApiKey;
+    const originalGithubKey = env.githubModelsApiKey;
+    env.cohereApiKey = 'test-cohere-key';
+    env.githubModelsApiKey = '';
+
+    try {
+      const result = listFreeModels();
+      expect(result).toEqual(
+        expect.arrayContaining([{ provider: 'cohere', model: 'command-r7b-12-2024' }])
+      );
+      expect(result.some((r) => r.provider === 'githubmodels')).toBe(false);
+    } finally {
+      env.cohereApiKey = originalCohereKey;
+      env.githubModelsApiKey = originalGithubKey;
+    }
+  });
+
+  it('excludes providers with no freeModels declared', () => {
+    const result = listFreeModels();
+    expect(result.some((r) => r.provider === 'anthropic')).toBe(false);
+  });
+
+  it('reflects every entry in each configured provider\'s own freeModels property', () => {
+    const originalKey = env.cohereApiKey;
+    env.cohereApiKey = 'test-cohere-key';
+    try {
+      const result = listFreeModels();
+      const cohereEntries = result.filter((r) => r.provider === 'cohere').map((r) => r.model);
+      expect(cohereEntries).toEqual(providerRegistry.cohere.freeModels ?? []);
+    } finally {
+      env.cohereApiKey = originalKey;
+    }
   });
 });

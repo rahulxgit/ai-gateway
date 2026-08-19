@@ -81,10 +81,9 @@ export function Composer({
 
   const hasUploading = attachments.some((a) => a.status === 'uploading');
   const canSend = !disabled && !hasUploading && (!!value.trim() || attachments.some((a) => a.status === 'ready'));
-  const wordCount = value.trim() ? value.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-hairline bg-panel shadow-panel transition duration-150 focus-within:border-signal-dim/80 focus-within:shadow-floating">
+    <div className="overflow-hidden rounded-[28px] border border-hairline bg-panel shadow-panel transition duration-150 focus-within:border-signal-dim/80 focus-within:shadow-floating">
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 border-b border-hairline/80 bg-panel-raised/30 px-3 py-2.5">
           {attachments.map((attachment) => {
@@ -165,22 +164,21 @@ export function Composer({
             aria-label="Message"
             className="max-h-56 min-h-10 w-full resize-none bg-transparent px-1 py-2 text-base leading-6 text-ink placeholder:text-ink-faint outline-none"
           />
-          <div className="flex items-center justify-between px-1 pb-0.5 pt-0.5 font-mono text-[10px] text-ink-faint">
-            <span>{hasUploading ? 'Uploading attachment…' : 'Shift+Enter for newline'}</span>
-            <span>{wordCount > 0 ? `${wordCount} words` : 'Ready'}</span>
-          </div>
+          {hasUploading && (
+            <div className="px-1 pb-0.5 pt-0.5 font-mono text-[10px] text-ink-faint">Uploading attachment…</div>
+          )}
         </div>
 
         <button
           type="button"
           onClick={submit}
           disabled={!canSend}
-          className="btn-primary h-10 shrink-0 px-4 text-sm"
+          aria-label="Send message"
+          title="Send message"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-signal text-canvas transition duration-150 hover:brightness-105 disabled:cursor-not-allowed disabled:bg-panel-raised disabled:text-ink-faint"
         >
-          <span className="hidden sm:inline">Send</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M22 2L11 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
       </div>

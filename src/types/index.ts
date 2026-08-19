@@ -180,6 +180,9 @@ export interface ProviderAdapter {
   readonly defaultModel: string;
   readonly supportsVision: boolean;
   readonly maxOutputTokens: number;
+  // Model IDs this provider serves at no cost, when known statically.
+  // Undefined/empty means "no free tier" — never guess a value here.
+  readonly freeModels?: string[];
   isConfigured(): boolean;
   chat(options: ProviderAdapterOptions): Promise<ProviderResponse>;
   chatStream(

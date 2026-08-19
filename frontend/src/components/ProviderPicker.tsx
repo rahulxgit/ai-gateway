@@ -166,11 +166,6 @@ export function ProviderPicker({
                     }`}
                   />
                   <span className="flex-1 truncate">{meta.label}</span>
-                  {meta.free && (
-                    <span className="shrink-0 rounded border border-ok-dim bg-ok-dim/10 px-1 py-0.5 text-[9px] uppercase tracking-wide text-ok">
-                      free
-                    </span>
-                  )}
                   {value === p && <span className="shrink-0">✓</span>}
                 </button>
               );

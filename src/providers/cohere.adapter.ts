@@ -3,6 +3,7 @@ import {
   ChatMessage,
   ProviderAdapter,
   ProviderAdapterOptions,
+  ProviderError,
   ProviderResponse,
   StreamChunk,
 } from '../types';
@@ -42,6 +43,10 @@ export class CohereAdapter implements ProviderAdapter {
   // conservative and consistent with this gateway's other unverified
   // defaults (see PROJECT_OVERVIEW.md pattern).
   readonly maxOutputTokens = 4096;
+  // Every call on a trial key is free against the 1,000/month cap
+  // regardless of which Cohere chat model is requested — see the file-level
+  // comment above for the exact terms.
+  readonly freeModels = ['command-r7b-12-2024'];
 
   isConfigured(): boolean {
     return Boolean(env.cohereApiKey);
@@ -159,6 +164,24 @@ export class CohereAdapter implements ProviderAdapter {
         estimatedCostUsd: 0,
         finishReason,
       };
+    } catch (err) {
+      throw classifyError(this.name, err);
+    }
+  }
+
+  // Cheap liveness probe for the background health-check service. Cohere
+  // has no bare /models GET usable without a real chat call in v2, so this
+  // hits the models listing endpoint that trial keys can read without
+  // spending against the chat-call quota.
+  async probeHealth(): Promise<void> {
+    if (!this.isConfigured()) {
+      throw new ProviderError(this.name, 'AUTH_ERROR', `${this.name}: not configured`);
+    }
+    try {
+      await axios.get('https://api.cohere.com/v1/models', {
+        headers: this.headers(),
+        timeout: env.requestTimeoutMs,
+      });
     } catch (err) {
       throw classifyError(this.name, err);
     }
