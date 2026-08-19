@@ -7,17 +7,21 @@ export class ModelScopeAdapter extends OpenAICompatibleAdapter {
       name: 'modelscope',
       baseUrl: 'https://api-inference.modelscope.cn/v1',
       apiKey: env.modelscopeApiKey,
-      defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
+      defaultModel: 'Qwen/Qwen3-235B-A22B-Instruct-2507',
       maxOutputTokens: 8192,
-      // Audited 2026-08-19: ModelScope's API-Inference tier is genuinely
-      // free — 2,000 requests/day total (500/day per model, dynamic), no
-      // credit card, resets daily. Confirmed the tier itself is real;
-      // TODO(verify): the currently configured Qwen2.5-72B-Instruct default
-      // may be stale — public sources as of this audit reference
-      // Qwen3.5-series models as the current free-tier catalog headline.
-      // Left unchanged rather than swapping on secondhand sources; confirm
-      // against a live GET /v1/models call before changing the default.
-      freeModels: ['Qwen/Qwen2.5-72B-Instruct'],
+      // Verified live 2026-08-19 via GET /v1/models with an active key.
+      // Old default 'Qwen/Qwen2.5-72B-Instruct' is NOT in the current
+      // catalog — fully retired, would have 404'd. Replaced with
+      // Qwen3.5/Qwen3-series models confirmed present in the live response.
+      freeModels: [
+        'Qwen/Qwen3-235B-A22B-Instruct-2507',
+        'Qwen/Qwen3.5-397B-A17B',
+        'Qwen/Qwen3.5-122B-A10B',
+        'Qwen/Qwen3-Coder-30B-A3B-Instruct',
+        'Qwen/Qwen3-Next-80B-A3B-Instruct',
+        'ZhipuAI/GLM-5.2',
+        'deepseek-ai/DeepSeek-V4-Pro',
+      ],
     });
   }
 }
