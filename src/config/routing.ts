@@ -21,11 +21,13 @@ export const FREE_AUTO_PROVIDERS: ProviderName[] = [
   'mistral',
   'cloudflare',
   'cohere',
+  // total 8
   // Confirmed free (build.nvidia.com model card, checked 2026-08-19). Cold
   // starts can be slow (see nvidia.adapter.ts's 90s requestTimeoutMs) so
   // it's placed last-ish in practice via DEFAULT_FAILOVER_ORDER rather than
   // being a first-choice free provider.
   'nvidia',
+  'modelscope',
 ];
 
 export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
@@ -39,6 +41,7 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
   // Last: confirmed-free but slow cold starts (see FREE_AUTO_PROVIDERS
   // comment above) make it a poor first pick for automatic failover.
   'nvidia',
+  'modelscope',
 ];
 
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
