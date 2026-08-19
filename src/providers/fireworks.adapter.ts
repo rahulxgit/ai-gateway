@@ -14,6 +14,12 @@ export class FireworksAdapter extends OpenAICompatibleAdapter {
       // used here to match the default already used by the Cerebras adapter.
       defaultModel: 'accounts/fireworks/models/gpt-oss-120b',
       maxOutputTokens: 32768,
+      // TODO(verify): audited 2026-08-19 — Fireworks has no genuinely free
+      // model tier. New accounts get a one-time $1 trial credit (~1M
+      // tokens on a 70B-class model), not a recurring no-cost allowance, so
+      // this stays out of freeModels/FREE_AUTO_PROVIDERS. Re-check if
+      // Fireworks' "Fire Pass" promo program (per-model, code-activated)
+      // ever becomes broadly available without a promo code.
     });
   }
 }

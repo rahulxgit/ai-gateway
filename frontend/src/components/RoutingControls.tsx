@@ -12,6 +12,7 @@ export function RoutingControls({
   onModelChange,
   freeOnly,
   onFreeOnlyChange,
+  compact,
 }: {
   taskType: TaskType;
   onTaskTypeChange: (t: TaskType) => void;
@@ -21,6 +22,9 @@ export function RoutingControls({
   onModelChange: (m: string) => void;
   freeOnly: boolean;
   onFreeOnlyChange: (v: boolean) => void;
+  // Header-slot rendering: task type + provider only, no free-toggle or
+  // model override — keeps the top bar from overflowing on narrow screens.
+  compact?: boolean;
 }) {
   const [customMode, setCustomMode] = useState(false);
   const isFreeModelPreset = OPENROUTER_FREE_MODELS.some((m) => m.value === model);
@@ -53,6 +57,7 @@ export function RoutingControls({
         }}
       />
 
+      {!compact && (
       <button
         type="button"
         role="switch"
@@ -85,8 +90,9 @@ export function RoutingControls({
         </span>
         free models only
       </button>
+      )}
 
-      {forceProvider === 'openrouter' && (
+      {!compact && forceProvider === 'openrouter' && (
         <div className="flex items-center gap-1.5">
           {!customMode ? (
             <>

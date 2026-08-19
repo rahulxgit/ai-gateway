@@ -16,6 +16,10 @@ export class BasetenAdapter extends OpenAICompatibleAdapter {
       // equivalent as a general-purpose default.
       defaultModel: 'openai/gpt-oss-120b',
       maxOutputTokens: 8192,
+      // TODO(verify): audited 2026-08-19 — no evidence of a recurring
+      // free/no-card tier for Baseten's Model APIs product; it's
+      // pay-as-you-go from the first token with sign-up credit programs
+      // rather than a standing $0 tier. Not added to freeModels.
     });
   }
 }

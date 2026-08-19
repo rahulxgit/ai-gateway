@@ -21,6 +21,11 @@ export class InferenceAdapter extends OpenAICompatibleAdapter {
       apiKey: env.inferenceApiKey,
       defaultModel: 'inference-net/schematron-v2-turbo',
       maxOutputTokens: 8192,
+      // TODO(verify): audited 2026-08-19 — inference.net advertises a
+      // "free tier" for initial evaluation in marketing copy, but no
+      // canonical pricing page confirms a specific $0/token model vs. a
+      // time/credit-limited trial. Not added to freeModels without a
+      // clearer source; re-check inference.net's own docs directly.
     });
   }
 }

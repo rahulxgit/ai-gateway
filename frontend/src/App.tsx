@@ -153,20 +153,18 @@ export default function App() {
                   <path d="M9 4v16" stroke="currentColor" strokeWidth="1.6" />
                 </svg>
               </button>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="brand-mark" aria-hidden="true">AG</span>
-                  <span className="truncate text-sm font-semibold tracking-tight text-ink">AI Gateway</span>
-                  <span className="hidden items-center gap-1 rounded-full border border-ok-dim/70 bg-ok/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ok sm:inline-flex">
-                    <span className="h-1 w-1 rounded-full bg-ok" />
-                    live
-                  </span>
-                </div>
-                {activeProject && (
-                  <div className="mt-0.5 hidden truncate pl-8 text-[11px] text-ink-faint sm:block">
-                    {activeProject.name}
-                  </div>
-                )}
+              <div className="min-w-0 flex items-center gap-2 lg:hidden">
+                <RoutingControls
+                  taskType={taskType}
+                  onTaskTypeChange={setTaskType}
+                  forceProvider={forceProvider}
+                  onForceProviderChange={setForceProvider}
+                  model={modelOverride}
+                  onModelChange={setModelOverride}
+                  freeOnly={freeOnly}
+                  onFreeOnlyChange={setFreeOnly}
+                  compact
+                />
               </div>
             </div>
 
@@ -191,21 +189,6 @@ export default function App() {
               >
                 analytics
               </button>
-            </div>
-          </div>
-
-          <div className="border-t border-hairline/60 px-3 py-2.5 lg:hidden">
-            <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2">
-              <RoutingControls
-                taskType={taskType}
-                onTaskTypeChange={setTaskType}
-                forceProvider={forceProvider}
-                onForceProviderChange={setForceProvider}
-                model={modelOverride}
-                onModelChange={setModelOverride}
-                freeOnly={freeOnly}
-                onFreeOnlyChange={setFreeOnly}
-              />
             </div>
           </div>
         </header>

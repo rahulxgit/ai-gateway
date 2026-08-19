@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { orchestrateChat, orchestrateChatStream } from '../services/orchestrator.service';
 import { getHealthSnapshot } from '../services/health.service';
-import { listConfiguredProviders, listAllProviders } from '../providers/registry';
+import { listConfiguredProviders, listAllProviders, listFreeModels } from '../providers/registry';
 import { FREE_AUTO_PROVIDERS, PAID_AUTO_PROVIDERS } from '../config/routing';
 import { validateConfiguredModels } from '../services/model-validation.service';
 import { logger } from '../utils/logger';
@@ -38,6 +38,10 @@ export function getProviders(_req: Request, res: Response) {
     all: listAllProviders(),
     freeModels: FREE_AUTO_PROVIDERS.filter((p) => configuredSet.has(p)),
     paidModels: PAID_AUTO_PROVIDERS.filter((p) => configuredSet.has(p)),
+    // Actual (provider, model) pairs currently free-to-use, for the
+    // frontend's free-only toggle — sourced live from each adapter's own
+    // freeModels rather than a separately maintained list.
+    freeModelList: listFreeModels(),
   });
 }
 

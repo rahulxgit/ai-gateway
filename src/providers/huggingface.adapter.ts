@@ -3,6 +3,7 @@ import {
   ChatMessage,
   ProviderAdapter,
   ProviderAdapterOptions,
+  ProviderError,
   ProviderResponse,
   StreamChunk,
 } from '../types';
@@ -33,6 +34,10 @@ export class HuggingFaceAdapter implements ProviderAdapter {
   // it depends on which provider actually handles a given request. Kept
   // conservative rather than guessing.
   readonly maxOutputTokens = 8192;
+  // HF grants every account a small monthly pool of free router credits
+  // regardless of which supported chat model is requested, so the default
+  // model is usable free-of-charge up to that monthly cap.
+  readonly freeModels = ['meta-llama/Llama-3.3-70B-Instruct'];
 
   isConfigured(): boolean {
     return Boolean(env.hfApiKey);
@@ -142,6 +147,24 @@ export class HuggingFaceAdapter implements ProviderAdapter {
         latencyMs: Date.now() - start,
         estimatedCostUsd: estimateCost(usage.totalTokens, PRICING_PER_1K_TOKENS.huggingface),
       };
+    } catch (err) {
+      throw classifyError(this.name, err);
+    }
+  }
+
+  // Cheap liveness probe for the background health-check service. HF's
+  // router has no /models listing behind this auth scheme, so we confirm
+  // the token itself is valid via the account endpoint instead — never a
+  // real completion request, no token spend.
+  async probeHealth(): Promise<void> {
+    if (!this.isConfigured()) {
+      throw new ProviderError(this.name, 'AUTH_ERROR', `${this.name}: not configured`);
+    }
+    try {
+      await axios.get('https://huggingface.co/api/whoami-v2', {
+        headers: this.headers(),
+        timeout: env.requestTimeoutMs,
+      });
     } catch (err) {
       throw classifyError(this.name, err);
     }

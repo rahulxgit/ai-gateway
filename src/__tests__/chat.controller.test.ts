@@ -10,6 +10,7 @@ jest.mock('../services/health.service', () => ({
 jest.mock('../providers/registry', () => ({
   listConfiguredProviders: jest.fn(),
   listAllProviders: jest.fn(),
+  listFreeModels: jest.fn(),
 }));
 jest.mock('../services/model-validation.service', () => ({
   validateConfiguredModels: jest.fn(),
@@ -17,7 +18,7 @@ jest.mock('../services/model-validation.service', () => ({
 
 import { orchestrateChat } from '../services/orchestrator.service';
 import { getHealthSnapshot } from '../services/health.service';
-import { listConfiguredProviders, listAllProviders } from '../providers/registry';
+import { listConfiguredProviders, listAllProviders, listFreeModels } from '../providers/registry';
 import { validateConfiguredModels } from '../services/model-validation.service';
 import { postChat, getProviders, getHealth, getModelValidation } from '../controllers/chat.controller';
 
@@ -64,6 +65,7 @@ describe('chat.controller', () => {
     it('returns configured and all provider lists from the registry', () => {
       (listConfiguredProviders as jest.Mock).mockReturnValue(['gemini', 'anthropic']);
       (listAllProviders as jest.Mock).mockReturnValue(['gemini', 'anthropic', 'openai']);
+      (listFreeModels as jest.Mock).mockReturnValue([{ provider: 'gemini', model: 'gemini-3.1-flash-lite' }]);
 
       const res = mockRes();
       getProviders({} as Request, res);
@@ -73,6 +75,7 @@ describe('chat.controller', () => {
         all: ['gemini', 'anthropic', 'openai'],
         freeModels: ['gemini'],
         paidModels: ['anthropic'],
+        freeModelList: [{ provider: 'gemini', model: 'gemini-3.1-flash-lite' }],
       });
     });
   });

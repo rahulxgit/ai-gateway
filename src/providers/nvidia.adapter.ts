@@ -19,6 +19,10 @@ export class NvidiaAdapter extends OpenAICompatibleAdapter {
       // untouched, so real outages on other providers still fail over
       // at the normal speed.
       requestTimeoutMs: 90_000,
+      // Confirmed live on the model's build.nvidia.com card (checked
+      // 2026-08-19): "Free Endpoint: Available" alongside the paid
+      // partner-endpoint option — the default model here is the free one.
+      freeModels: ['nvidia/nemotron-3.5-lightning-30b-a3b'],
     });
   }
 }
