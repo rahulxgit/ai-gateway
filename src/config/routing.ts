@@ -45,12 +45,12 @@ export const DEFAULT_FAILOVER_ORDER: ProviderName[] = [
 ];
 
 export const TASK_ROUTING: Record<TaskType, ProviderName[]> = {
-  coding: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'cloudflare', 'cohere', 'nvidia'],
-  reasoning: ['openrouter', 'gemini', 'groq', 'cerebras', 'mistral', 'cloudflare', 'cohere', 'nvidia'],
-  creative: ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere', 'nvidia'],
-  fast: ['groq', 'cerebras', 'gemini', 'openrouter', 'mistral', 'cloudflare', 'cohere', 'nvidia'],
+  coding: ['openrouter', 'groq', 'gemini', 'cerebras', 'mistral', 'cloudflare', 'cohere', 'nvidia', 'modelscope'],
+  reasoning: ['openrouter', 'gemini', 'groq', 'cerebras', 'mistral', 'cloudflare', 'cohere', 'nvidia', 'modelscope'],
+  creative: ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere', 'nvidia', 'modelscope'],
+  fast: ['groq', 'cerebras', 'gemini', 'openrouter', 'mistral', 'cloudflare', 'cohere', 'nvidia', 'modelscope'],
   cheap: DEFAULT_FAILOVER_ORDER,
-  'large-context': ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere', 'nvidia'],
+  'large-context': ['gemini', 'openrouter', 'mistral', 'groq', 'cerebras', 'cloudflare', 'cohere', 'nvidia' , 'modelscope'],
   general: DEFAULT_FAILOVER_ORDER,
 };
 
@@ -68,6 +68,15 @@ export const FREE_MODEL_IDS: Partial<Record<ProviderName, string[]>> = {
   githubmodels: ['openai/gpt-4o-mini', 'openai/gpt-4o', 'meta/llama-3.3-70b-instruct'],
   cohere: ['command-r7b-12-2024'],
   nvidia: ['nvidia/nemotron-3.5-lightning-30b-a3b'],
+  modelscope: [
+  'Qwen/Qwen3-235B-A22B-Instruct-2507',
+  'Qwen/Qwen3.5-397B-A17B',
+  'Qwen/Qwen3.5-122B-A10B',
+  'Qwen/Qwen3-Coder-30B-A3B-Instruct',
+  'Qwen/Qwen3-Next-80B-A3B-Instruct',
+  'ZhipuAI/GLM-5.2',
+  'deepseek-ai/DeepSeek-V4-Pro',
+],
 };
 
 export function isFreeModel(provider: ProviderName, model: string): boolean {
