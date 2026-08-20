@@ -124,35 +124,24 @@ Official documentation:
 
 ## Supported providers
 
-The current registry contains 23 providers:
+The current registry contains 14 providers:
 
 1. OpenAI
 2. Gemini
 3. Anthropic
 4. Groq
-5. Together AI
-6. OpenRouter
-7. Hugging Face
-8. DeepSeek
-9. Kimi / Moonshot AI
-10. Cerebras
-11. Mistral
-12. Cloudflare Workers AI
-13. Fireworks AI
-14. Inference.net
-15. Nebius AI Studio
-16. SambaNova Cloud
-17. NVIDIA NIM
-18. Novita AI
-19. Baseten
-20. ModelScope
-21. AI/ML API
-22. GitHub Models (free, no card, recurring daily quota — currently excluded from automatic routing; no key configured yet, see note below)
-23. Cohere (free, no card, recurring monthly quota)
+5. OpenRouter
+6. Hugging Face
+7. Cerebras
+8. Mistral
+9. Cloudflare Workers AI
+10. Fireworks AI
+11. NVIDIA NIM
+12. Novita AI
+13. Baseten
+14. Cohere (free, no card, recurring monthly quota)
 
 Provider availability is configuration-driven: set a provider's API key (and Cloudflare's account ID where required) and the registry can expose it. `/providers` and `/health/models` reflect the providers configured in the running environment. `/providers` also returns `freeModels`/`paidModels`, reflecting which configured providers currently participate in the free vs. paid automatic-routing pools (see below).
-
-> **GitHub Models note:** registered and priced as free, but excluded from automatic routing as of 2026-08-18 — a live provider audit found no `GITHUB_MODELS_API_KEY` in production, so it was an unreachable dead entry in every routing order. Still usable via `forceProvider: "githubmodels"` once a key is set; re-add to `FREE_AUTO_PROVIDERS` in `src/config/routing.ts` after verifying.
 
 ## Free vs. paid routing
 
@@ -220,25 +209,16 @@ GEMINI_API_KEY=
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
 GROQ_API_KEY=
-TOGETHER_API_KEY=
 OPENROUTER_API_KEY=
 HF_API_KEY=
-DEEPSEEK_API_KEY=
-KIMI_API_KEY=
 CEREBRAS_API_KEY=
 MISTRAL_API_KEY=
 CLOUDFLARE_API_KEY=
 CLOUDFLARE_ACCOUNT_ID=
 FIREWORKS_API_KEY=
-INFERENCE_API_KEY=
-NEBIUS_API_KEY=
-SAMBANOVA_API_KEY=
 NVIDIA_API_KEY=
 NOVITA_API_KEY=
 BASETEN_API_KEY=
-MODELSCOPE_API_KEY=
-AIMLAPI_API_KEY=
-GITHUB_MODELS_API_KEY=
 COHERE_API_KEY=
 ```
 

@@ -91,37 +91,28 @@ frontend/
 
 ## Provider registry
 
-There are 23 providers in the current registry:
+There are 14 providers in the current registry:
 
 1. OpenAI
 2. Gemini
 3. Anthropic
 4. Groq
-5. Together AI
-6. OpenRouter
-7. Hugging Face
-8. DeepSeek
-9. Kimi / Moonshot AI
-10. Cerebras
-11. Mistral
-12. Cloudflare Workers AI
-13. Fireworks AI
-14. Inference.net
-15. Nebius AI Studio
-16. SambaNova Cloud
-17. NVIDIA NIM
-18. Novita AI
-19. Baseten
-20. ModelScope
-21. AI/ML API
-22. GitHub Models (free, no card, recurring daily quota — currently excluded from automatic routing, see note below; no key configured yet)
-23. Cohere (free, no card, recurring monthly quota)
+5. OpenRouter
+6. Hugging Face
+7. Cerebras
+8. Mistral
+9. Cloudflare Workers AI
+10. Fireworks AI
+11. NVIDIA NIM
+12. Novita AI
+13. Baseten
+14. Cohere (free, no card, recurring monthly quota)
 
 Use `src/providers/registry.ts` and `src/config/routing.ts` as the source of truth for provider registration and routing order. Do not maintain a separate hand-written provider list in middleware or API code.
 
 **Free vs. paid automatic routing (added 2026-08-18):** `src/config/routing.ts` exports `FREE_AUTO_PROVIDERS` and `PAID_AUTO_PROVIDERS` as two disjoint pools. Automatic routing (`buildAutoProviderOrder`) defaults to the free pool only — this is the gateway's historical behavior and remains the default. A per-request `ChatRequest.freeOnly: false` opts a single request into also trying the paid pool, cheapest-first, strictly *after* every free provider has been attempted and failed — never instead of. `forceProvider` is unaffected either way; it pins exactly one provider regardless of free/paid status. `GET /providers` reports the current `freeModels`/`paidModels` split for configured providers.
 
-**GitHub Models exclusion:** `githubmodels` is registered and priced as free, but is currently excluded from `FREE_AUTO_PROVIDERS` — a live provider audit (2026-08-18) found no `GITHUB_MODELS_API_KEY` configured in production, meaning it was a silent dead entry in every candidate order. Re-add it to `FREE_AUTO_PROVIDERS` (and the matching entries in `TASK_ROUTING`) once a real key is verified working; `src/__tests__/failover-no-dead-ends.test.ts` will fail the "every registered provider is reachable" check if a provider is ever left out of both pools without being added to that test's `knownExclusions` list, so update both together.
+**Provider trim (2026-08-19):** `deepseek`, `kimi`, `together`, `inference` (Inference.net), `nebius`, `sambanova`, `modelscope`, `aimlapi`, and `githubmodels` were removed entirely from both backend and frontend — deleted adapters, dropped from `PROVIDER_NAMES`/routing tables/env config, and stripped from the frontend's `ProviderName` union and picker UI. `src/__tests__/failover-no-dead-ends.test.ts`'s `knownExclusions` list is now empty since every remaining registered provider is reachable in one of the two pools.
 
 Vision routing currently restricts image-bearing requests to configured vision-capable providers.
 
@@ -163,7 +154,7 @@ At least one provider API key is required for useful inference traffic. Cloudfla
 
 `ProviderError.retryable` distinguishes transient failures from failures that should not retry the same provider. `AUTH_ERROR`, `NOT_FOUND`, `ACCOUNT_SUSPENDED`, and `INSUFFICIENT_CREDITS` are non-retryable for the same provider, while router failover to another provider remains possible.
 
-`base.adapter.ts`'s billing-vs-auth classification is regex-based against the provider's error message text — it was found (2026-08-18) to miss "run out of funds"/"top up your balance" phrasing (aimlapi), which misclassified a billing issue as `AUTH_ERROR`. The regex was broadened; if a new provider's billing error message doesn't match `INSUFFICIENT_CREDITS`, check `classifyError()`'s regex first before assuming the key itself is bad.
+`base.adapter.ts`'s billing-vs-auth classification is regex-based against the provider's error message text — it was found (2026-08-18) to miss "run out of funds"/"top up your balance" phrasing, which misclassified a billing issue as `AUTH_ERROR`. The regex was broadened; if a new provider's billing error message doesn't match `INSUFFICIENT_CREDITS`, check `classifyError()`'s regex first before assuming the key itself is bad.
 
 ### 3. Rolling 24-hour cost guard
 

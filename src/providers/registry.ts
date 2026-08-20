@@ -3,24 +3,15 @@ import { GeminiAdapter } from './gemini.adapter';
 import { AnthropicAdapter } from './anthropic.adapter';
 import { OpenAIAdapter } from './openai.adapter';
 import { GroqAdapter } from './groq.adapter';
-import { TogetherAdapter } from './together.adapter';
 import { OpenRouterAdapter } from './openrouter.adapter';
 import { HuggingFaceAdapter } from './huggingface.adapter';
-import { DeepSeekAdapter } from './deepseek.adapter';
-import { KimiAdapter } from './kimi.adapter';
 import { CerebrasAdapter } from './cerebras.adapter';
 import { MistralAdapter } from './mistral.adapter';
 import { CloudflareAdapter } from './cloudflare.adapter';
 import { FireworksAdapter } from './fireworks.adapter';
-import { InferenceAdapter } from './inference.adapter';
-import { NebiusAdapter } from './nebius.adapter';
-import { SambaNovaAdapter } from './sambanova.adapter';
 import { NvidiaAdapter } from './nvidia.adapter';
 import { NovitaAdapter } from './novita.adapter';
 import { BasetenAdapter } from './baseten.adapter';
-import { ModelScopeAdapter } from './modelscope.adapter';
-import { AimlapiAdapter } from './aimlapi.adapter';
-import { GitHubModelsAdapter } from './githubmodels.adapter';
 import { CohereAdapter } from './cohere.adapter';
 
 // Single source of truth for every provider instance. To add a new
@@ -32,24 +23,15 @@ export const providerRegistry: Record<ProviderName, ProviderAdapter> = {
   anthropic: new AnthropicAdapter(),
   openai: new OpenAIAdapter(),
   groq: new GroqAdapter(),
-  together: new TogetherAdapter(),
   openrouter: new OpenRouterAdapter(),
   huggingface: new HuggingFaceAdapter(),
-  deepseek: new DeepSeekAdapter(),
-  kimi: new KimiAdapter(),
   cerebras: new CerebrasAdapter(),
   mistral: new MistralAdapter(),
   cloudflare: new CloudflareAdapter(),
   fireworks: new FireworksAdapter(),
-  inference: new InferenceAdapter(),
-  nebius: new NebiusAdapter(),
-  sambanova: new SambaNovaAdapter(),
   nvidia: new NvidiaAdapter(),
   novita: new NovitaAdapter(),
   baseten: new BasetenAdapter(),
-  modelscope: new ModelScopeAdapter(),
-  aimlapi: new AimlapiAdapter(),
-  githubmodels: new GitHubModelsAdapter(),
   cohere: new CohereAdapter(),
 };
 

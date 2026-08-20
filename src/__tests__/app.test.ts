@@ -49,9 +49,10 @@ describe('GET /health', () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
-    // 11 original providers + 10 free/free-tier providers + 2 genuinely
-    // free recurring-quota providers (GitHub Models, Cohere).
-    expect(res.body.providers.length).toBe(23);
+    // 14 providers total after trimming the branch down to the core
+    // free/free-tier set (removed: deepseek, kimi, together, inference,
+    // nebius, sambanova, modelscope, aimlapi, githubmodels).
+    expect(res.body.providers.length).toBe(14);
   });
 });
 
@@ -65,11 +66,8 @@ describe('GET /providers', () => {
         'anthropic',
         'openai',
         'groq',
-        'together',
         'openrouter',
         'huggingface',
-        'deepseek',
-        'kimi',
         'cerebras',
         'mistral',
       ])
@@ -111,16 +109,14 @@ describe('POST /chat validation', () => {
     expect(res.body.error).not.toMatch(/Invalid request body/i);
   });
 
-  // Regression test: chatRequestSchema.maxTokens was previously capped at
-  // 65536, silently rejecting valid requests to DeepSeek (real ceiling
-  // 384,000) with a 400 before they ever reached the adapter's own correct
-  // per-provider clamping. A maxTokens value above the old cap but within
-  // DeepSeek's real ceiling must now pass validation and reach the router
-  // (503 no-providers-configured in this test env), not fail at 400.
-  it('accepts a maxTokens value above the old 65536 cap, up to DeepSeek\'s real 384000 ceiling', async () => {
+  // Regression test: chatRequestSchema.maxTokens must accept a value up to
+  // the highest real per-provider ceiling currently registered (OpenAI's
+  // 128,000) and reach the router (503 no-providers-configured in this
+  // test env), not fail validation at 400.
+  it('accepts a maxTokens value up to the highest registered provider ceiling (128000)', async () => {
     const res = await request(app)
       .post('/chat')
-      .send({ messages: [{ role: 'user', content: 'hi' }], maxTokens: 200000 });
+      .send({ messages: [{ role: 'user', content: 'hi' }], maxTokens: 128000 });
     expect(res.status).toBe(503);
     expect(res.body.error).not.toMatch(/Invalid request body/i);
   });

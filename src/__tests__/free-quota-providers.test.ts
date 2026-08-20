@@ -1,32 +1,28 @@
 import axios from 'axios';
 import { providerRegistry, listAllProviders, listFreeModels } from '../providers/registry';
 import { PRICING_PER_1K_TOKENS, FREE_AUTO_PROVIDERS, DEFAULT_FAILOVER_ORDER } from '../config/routing';
-import { GitHubModelsAdapter } from '../providers/githubmodels.adapter';
 import { CohereAdapter } from '../providers/cohere.adapter';
 import { env } from '../config/env';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-// Regression coverage for the two genuinely free, recurring-quota
-// providers (daily/monthly reset, no card) added alongside this test:
-// GitHub Models and Cohere. Both are intentionally kept out of the
-// automatic free-routing pool because their quotas are too low for
-// retry/failover traffic — see .env.example and each adapter file for
-// the reasoning.
-describe('genuinely free recurring-quota providers (GitHub Models, Cohere)', () => {
-  it('are registered and exposed by listAllProviders()', () => {
-    expect(providerRegistry.githubmodels).toBeDefined();
+// Regression coverage for Cohere, the genuinely free, recurring-quota
+// provider (monthly reset, no card). It's intentionally ordered last in
+// the automatic free-routing pool because its quota is too low for
+// retry/failover traffic to hit on every request — see .env.example and
+// cohere.adapter.ts for the reasoning.
+describe('genuinely free recurring-quota provider (Cohere)', () => {
+  it('is registered and exposed by listAllProviders()', () => {
     expect(providerRegistry.cohere).toBeDefined();
-    expect(listAllProviders()).toEqual(expect.arrayContaining(['githubmodels', 'cohere']));
+    expect(listAllProviders()).toEqual(expect.arrayContaining(['cohere']));
   });
 
-  it('have a pricing entry of 0 so analytics/cost estimation never mis-bills them', () => {
-    expect(PRICING_PER_1K_TOKENS.githubmodels).toBe(0);
+  it('has a pricing entry of 0 so analytics/cost estimation never mis-bills it', () => {
     expect(PRICING_PER_1K_TOKENS.cohere).toBe(0);
   });
 
-  it('cohere is included in automatic routing, ordered last given its lower recurring quota', () => {
+  it('is included in automatic routing, ordered last given its lower recurring quota', () => {
     expect(FREE_AUTO_PROVIDERS).toContain('cohere');
     expect(DEFAULT_FAILOVER_ORDER).toContain('cohere');
 
@@ -44,71 +40,6 @@ describe('genuinely free recurring-quota providers (GitHub Models, Cohere)', () 
     for (const provider of higherQuotaProviders) {
       expect(DEFAULT_FAILOVER_ORDER.indexOf(provider)).toBeLessThan(cohereIdx);
     }
-  });
-
-  // githubmodels is registered and free-priced, but excluded from automatic
-  // routing (2026-08-18) since no GITHUB_MODELS_API_KEY exists in production
-  // yet — see config/routing.ts for the full note.
-  it('githubmodels is registered but currently excluded from automatic routing', () => {
-    expect(FREE_AUTO_PROVIDERS).not.toContain('githubmodels');
-    expect(DEFAULT_FAILOVER_ORDER).not.toContain('githubmodels');
-  });
-});
-
-describe('GitHubModelsAdapter', () => {
-  const originalKey = env.githubModelsApiKey;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    env.githubModelsApiKey = 'test-github-token';
-  });
-
-  afterAll(() => {
-    env.githubModelsApiKey = originalKey;
-  });
-
-  it('is unconfigured without a token, configured with one', () => {
-    env.githubModelsApiKey = '';
-    expect(new GitHubModelsAdapter().isConfigured()).toBe(false);
-    env.githubModelsApiKey = 'test-github-token';
-    expect(new GitHubModelsAdapter().isConfigured()).toBe(true);
-  });
-
-  it('sends the OpenAI-compatible chat contract to models.github.ai/inference', async () => {
-    mockedAxios.post.mockResolvedValue({
-      data: {
-        model: 'openai/gpt-4o-mini',
-        choices: [{ message: { content: 'hello from GitHub Models' }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
-      },
-    });
-
-    const adapter = new GitHubModelsAdapter();
-    const result = await adapter.chat({ messages: [{ role: 'user', content: 'hi' }] });
-
-    expect(result.content).toBe('hello from GitHub Models');
-    expect(mockedAxios.post).toHaveBeenCalledWith(
-      'https://models.github.ai/inference/chat/completions',
-      expect.objectContaining({ model: 'openai/gpt-4o-mini' }),
-      expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: 'Bearer test-github-token' }),
-      })
-    );
-  });
-
-  it('reports the default model as free for cost estimation', async () => {
-    mockedAxios.post.mockResolvedValue({
-      data: {
-        model: 'openai/gpt-4o-mini',
-        choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      },
-    });
-
-    const adapter = new GitHubModelsAdapter();
-    const result = await adapter.chat({ messages: [{ role: 'user', content: 'hi' }] });
-
-    expect(result.estimatedCostUsd).toBe(0);
   });
 });
 
@@ -195,19 +126,15 @@ describe('CohereAdapter', () => {
 describe('listFreeModels()', () => {
   it('only includes (provider, model) pairs from configured providers', () => {
     const originalCohereKey = env.cohereApiKey;
-    const originalGithubKey = env.githubModelsApiKey;
     env.cohereApiKey = 'test-cohere-key';
-    env.githubModelsApiKey = '';
 
     try {
       const result = listFreeModels();
       expect(result).toEqual(
         expect.arrayContaining([{ provider: 'cohere', model: 'command-r7b-12-2024' }])
       );
-      expect(result.some((r) => r.provider === 'githubmodels')).toBe(false);
     } finally {
       env.cohereApiKey = originalCohereKey;
-      env.githubModelsApiKey = originalGithubKey;
     }
   });
 

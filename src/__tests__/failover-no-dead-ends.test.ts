@@ -41,10 +41,11 @@ describe('routing config — every registered provider is reachable somewhere', 
   const allRegistered = Object.keys(providerRegistry) as ProviderName[];
 
   // Providers deliberately excluded from both pools pending a fix that
-  // isn't a routing bug (e.g. missing API key in prod). Keep this list
-  // explicit and reviewed, rather than letting a provider go missing by
-  // accident — see config/routing.ts for the reasoning per entry.
-  const knownExclusions: ProviderName[] = ['githubmodels'];
+  // isn't a routing bug. Keep this list explicit and reviewed, rather than
+  // letting a provider go missing by accident — see config/routing.ts for
+  // the reasoning per entry. Empty right now: every registered provider is
+  // reachable in one of the two pools.
+  const knownExclusions: ProviderName[] = [];
 
   it('is a member of FREE_AUTO_PROVIDERS, PAID_AUTO_PROVIDERS, or a documented exclusion', () => {
     const reachable = new Set([...FREE_AUTO_PROVIDERS, ...PAID_AUTO_PROVIDERS]);

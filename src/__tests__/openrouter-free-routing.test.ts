@@ -63,7 +63,7 @@ describe('OpenRouter free routing', () => {
 
 describe('free-first routing policy', () => {
   it('restricts automatic provider order to the configured free-tier pool', () => {
-    expect(FREE_AUTO_PROVIDERS).toEqual(['gemini', 'openrouter', 'groq', 'cerebras', 'mistral', 'cloudflare', 'cohere', 'nvidia' , 'modelscope']);
+    expect(FREE_AUTO_PROVIDERS).toEqual(['gemini', 'openrouter', 'groq', 'cerebras', 'mistral', 'cloudflare', 'cohere', 'nvidia']);
     const order = buildProviderOrder('general', undefined);
     expect(order.every((provider) => FREE_AUTO_PROVIDERS.includes(provider))).toBe(true);
   });

@@ -83,12 +83,9 @@ describe('per-provider maxOutputTokens configuration', () => {
       anthropic: 64000, // verified: Anthropic docs
       openai: 128000, // verified: OpenAI docs (whole GPT-5 family)
       groq: 16384, // verified live: qwen/qwen3.6-27b's actual max_tokens ceiling on Groq
-      deepseek: 384000, // verified: DeepSeek docs (v4-flash)
       cerebras: 40960, // verified: Cerebras model config
       openrouter: 16384, // verified: OpenRouter model page
-      together: 64000, // context-bound estimate (no separate cap published)
       mistral: 64000, // context-bound estimate (no separate cap published)
-      kimi: 8192, // conservative — unverified
       huggingface: 8192, // conservative — router proxies dynamically, no fixed ceiling exists
     };
 

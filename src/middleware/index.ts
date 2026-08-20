@@ -58,7 +58,7 @@ export const chatRequestSchema = z.object({
   forceProvider: z.enum(PROVIDER_NAMES).optional(),
   model: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
-  maxTokens: z.number().int().min(1).max(384000).optional(),
+  maxTokens: z.number().int().min(1).max(128000).optional(),
   stream: z.boolean().optional(),
   freeOnly: z.boolean().optional(),
 });

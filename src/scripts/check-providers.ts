@@ -1,6 +1,6 @@
 /**
  * One-off diagnostic script for the "possibly stale defaultModel" providers
- * flagged in PROJECT_OVERVIEW.md (inference, nebius, nvidia, novita).
+ * flagged in PROJECT_OVERVIEW.md (nvidia, novita).
  *
  * Run this wherever the real *_API_KEY env vars already live and network
  * access to the provider hosts is unrestricted — i.e. locally with a real
@@ -28,7 +28,7 @@ import { providerRegistry } from '../providers/registry';
 import { env } from '../config/env';
 import { ProviderName } from '../types';
 
-const TARGETS: ProviderName[] = ['inference', 'nebius', 'nvidia', 'novita'];
+const TARGETS: ProviderName[] = ['nvidia', 'novita'];
 
 // Mirrors each adapter's baseUrl / apiKey / headers so we can hit /models
 // directly for the *raw* response, not just the boolean-ish
@@ -38,16 +38,6 @@ const RAW_CONFIG: Record<
   string,
   { baseUrl: string; apiKey: string; headers: Record<string, string> }
 > = {
-  inference: {
-    baseUrl: 'https://api.inference.net/v1',
-    apiKey: env.inferenceApiKey,
-    headers: { Authorization: `Bearer ${env.inferenceApiKey}` },
-  },
-  nebius: {
-    baseUrl: 'https://api.studio.nebius.com/v1',
-    apiKey: env.nebiusApiKey,
-    headers: { Authorization: `Bearer ${env.nebiusApiKey}` },
-  },
   nvidia: {
     baseUrl: 'https://integrate.api.nvidia.com/v1',
     apiKey: env.nvidiaApiKey,
