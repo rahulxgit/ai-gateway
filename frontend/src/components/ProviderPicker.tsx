@@ -17,9 +17,10 @@ const STATUS_DOT: Record<ProviderHealth['status'], string> = {
 
 /**
  * Searchable provider combobox. A plain <select> stopped scaling once the
- * gateway grew to 21 providers — this replaces it with a filterable list
- * that surfaces live health status and free/paid tier inline, so picking a
- * provider is a glance instead of scrolling a long native dropdown.
+ * gateway grew past a handful of providers — this replaces it with a
+ * filterable list that surfaces live health status and free/paid tier
+ * inline, so picking a provider is a glance instead of scrolling a long
+ * native dropdown.
  */
 export function ProviderPicker({
   value,

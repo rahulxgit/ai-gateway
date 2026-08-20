@@ -3,24 +3,15 @@ export type ProviderName =
   | 'anthropic'
   | 'openai'
   | 'groq'
-  | 'together'
   | 'openrouter'
   | 'huggingface'
-  | 'deepseek'
-  | 'kimi'
   | 'cerebras'
   | 'mistral'
   | 'cloudflare'
   | 'fireworks'
-  | 'inference'
-  | 'nebius'
-  | 'sambanova'
   | 'nvidia'
   | 'novita'
   | 'baseten'
-  | 'modelscope'
-  | 'aimlapi'
-  | 'githubmodels'
   | 'cohere';
 
 export type TaskType =
@@ -114,24 +105,15 @@ export const ALL_PROVIDERS: ProviderName[] = [
   'anthropic',
   'openai',
   'groq',
-  'together',
   'openrouter',
   'huggingface',
-  'deepseek',
-  'kimi',
   'cerebras',
   'mistral',
   'cloudflare',
   'fireworks',
-  'inference',
-  'nebius',
-  'sambanova',
   'nvidia',
   'novita',
   'baseten',
-  'modelscope',
-  'aimlapi',
-  'githubmodels',
   'cohere',
 ];
 
@@ -146,8 +128,8 @@ export const TASK_TYPES: { value: TaskType; label: string }[] = [
 ];
 
 // Light metadata for the provider picker UI only — never sent to the
-// backend, purely to make 21 providers scannable/searchable instead of a
-// flat alphabetical list. "free" here means a genuinely free tier or free
+// backend, purely to make the provider list scannable/searchable instead of
+// a flat alphabetical list. "free" here means a genuinely free tier or free
 // trial credits exist; it does not guarantee $0 for every model a provider
 // hosts.
 export interface ProviderMeta {
@@ -161,24 +143,15 @@ export const PROVIDER_META: Record<ProviderName, ProviderMeta> = {
   anthropic: { label: 'Anthropic', free: false, note: 'Vision · Claude' },
   openai: { label: 'OpenAI', free: false, note: 'Vision · GPT' },
   groq: { label: 'Groq', free: true, note: 'Fastest inference' },
-  together: { label: 'Together AI', free: true, note: '131K context' },
   openrouter: { label: 'OpenRouter', free: true, note: 'Free-tagged models' },
   huggingface: { label: 'Hugging Face', free: true, note: 'Router-proxied' },
-  deepseek: { label: 'DeepSeek', free: true, note: '384K output, cheap' },
-  kimi: { label: 'Kimi (Moonshot)', free: false, note: '256K context' },
   cerebras: { label: 'Cerebras', free: true, note: '1M tokens/day, fastest' },
   mistral: { label: 'Mistral', free: true, note: '~1B tokens/mo, Codestral' },
   cloudflare: { label: 'Cloudflare Workers AI', free: true, note: 'Needs account ID' },
   fireworks: { label: 'Fireworks AI', free: true, note: 'Free trial credits' },
-  inference: { label: 'Inference.net', free: true, note: 'Free tier' },
-  nebius: { label: 'Nebius AI Studio', free: true, note: 'Free trial credits' },
-  sambanova: { label: 'SambaNova Cloud', free: true, note: 'Up to 256K context' },
   nvidia: { label: 'NVIDIA NIM', free: true, note: 'Free developer tier' },
   novita: { label: 'Novita AI', free: true, note: 'Free starter credits' },
   baseten: { label: 'Baseten', free: true, note: 'Free trial credits' },
-  modelscope: { label: 'ModelScope', free: true, note: 'Free tier (Alibaba)' },
-  aimlapi: { label: 'AI/ML API', free: true, note: 'Free credits, model hub' },
-  githubmodels: { label: 'GitHub Models', free: true, note: 'Free, no card, ~50-150 req/day' },
   cohere: { label: 'Cohere', free: true, note: 'Free, no card, 1,000 req/month' },
 };
 

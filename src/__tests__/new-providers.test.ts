@@ -5,14 +5,9 @@ import { ProviderName } from '../types';
 const NEW_PROVIDERS: ProviderName[] = [
   'cloudflare',
   'fireworks',
-  'inference',
-  'nebius',
-  'sambanova',
   'nvidia',
   'novita',
   'baseten',
-  'modelscope',
-  'aimlapi',
 ];
 
 describe('newly added providers', () => {
@@ -52,7 +47,6 @@ describe('newly added providers', () => {
   it('keeps paid/credit-dependent providers available for explicit selection only', () => {
     expect(FREE_AUTO_PROVIDERS).not.toContain('openai');
     expect(FREE_AUTO_PROVIDERS).not.toContain('anthropic');
-    expect(FREE_AUTO_PROVIDERS).not.toContain('deepseek');
     expect(FREE_AUTO_PROVIDERS).not.toContain('huggingface');
   });
 

@@ -50,14 +50,14 @@ describe('classifyError', () => {
   });
 
   it('classifies 402 as INSUFFICIENT_CREDITS and surfaces the provider message', () => {
-    const err = classifyError('inference', fakeAxiosError(402, undefined, { message: 'Insufficient funds. Please add a payment method.' }));
+    const err = classifyError('fireworks', fakeAxiosError(402, undefined, { message: 'Insufficient funds. Please add a payment method.' }));
     expect(err.code).toBe('INSUFFICIENT_CREDITS');
     expect(err.retryable).toBe(false);
     expect(err.message).toContain('payment required');
   });
 
   it('classifies 402 with no body using a sensible default message', () => {
-    const err = classifyError('inference', fakeAxiosError(402));
+    const err = classifyError('fireworks', fakeAxiosError(402));
     expect(err.code).toBe('INSUFFICIENT_CREDITS');
     expect(err.retryable).toBe(false);
     expect(err.message).toContain('payment required');
@@ -70,7 +70,7 @@ describe('classifyError', () => {
   });
 
   it('classifies 400/422 as INVALID_REQUEST and non-retryable', () => {
-    const err = classifyError('together', fakeAxiosError(400));
+    const err = classifyError('mistral', fakeAxiosError(400));
     expect(err.code).toBe('INVALID_REQUEST');
     expect(err.retryable).toBe(false);
   });

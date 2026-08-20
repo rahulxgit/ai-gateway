@@ -37,15 +37,15 @@ describe('extractUpload', () => {
   });
 
   it('extracts text from a real DOCX', async () => {
-    const result = await extractUpload(
-      fixture('sample.docx'),
-      'sample.docx',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    );
-    expect(result.kind).toBe('text');
-    expect(result.extractedText).toContain('Word format');
-    expect(result.extractedText).toContain('undo, redo');
-  });
+  const result = await extractUpload(
+    fixture('sample.docx'),
+    'sample.docx',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  );
+  expect(result.kind).toBe('text');
+  expect(result.extractedText).toContain('Word format');
+  expect(result.extractedText).toContain('undo, redo');
+}, 15000); // real DOCX parse, no mock — give it headroom under load (see PDF test comment above)
 
   it('reads plain text files as-is', async () => {
     const buf = Buffer.from('hello world\nsecond line');
