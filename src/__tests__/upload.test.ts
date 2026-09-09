@@ -36,6 +36,16 @@ describe('extractUpload', () => {
     expect(result.extractedText).toContain('SQLite');
   });
 
+  // mammoth (the real, unmocked DOCX parser — unlike pdfjs-dist above,
+  // which is mocked purely for Jest/ESM compatibility) is dynamically
+  // imported inside extractUpload(). Its first cold import pulls in the
+  // full dependency tree (JSZip, etc.), which reliably exceeds Jest's
+  // default 5000ms test timeout under ts-jest's transform overhead —
+  // especially when this suite runs after others in the same process
+  // (--runInBand). This is real, legitimate work, not a hang: verified
+  // manually in isolation at ~6.5s. Bumped to 15000ms rather than raising
+  // the global testTimeout, since every other test in this file completes
+  // in milliseconds and shouldn't get a blanket extension.
   it('extracts text from a real DOCX', async () => {
     const result = await extractUpload(
       fixture('sample.docx'),
@@ -45,7 +55,7 @@ describe('extractUpload', () => {
     expect(result.kind).toBe('text');
     expect(result.extractedText).toContain('Word format');
     expect(result.extractedText).toContain('undo, redo');
-  });
+  }, 15000);
 
   it('reads plain text files as-is', async () => {
     const buf = Buffer.from('hello world\nsecond line');
